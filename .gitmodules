@@ -1,0 +1,3 @@
+[submodule "src/gilles/simulatorapi/simapi"]
+	path = src/gilles/simulatorapi/simapi
+	url = https://github.com/Spacefreak18/simapi
