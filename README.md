@@ -5,6 +5,8 @@ ncurses based telemetry monitor for racing sims
 - Updates at 120 frames per seconds.
 - Modular design for support with various titles
 
+[![gilles1.png](https://i.postimg.cc/JhgrQB8c/gilles1.png)](https://postimg.cc/ns4fFrCC)
+
 ## Dependencies
 - argtable2
 - libconfig
