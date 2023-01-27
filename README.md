@@ -26,6 +26,14 @@ mkdir build; cd build
 cmake ..
 make
 ```
+
+## Usage
+```
+gilles play --sim=ac -S
+```
+
+Omit the -S parameter if you do not wish to send data to your local mqtt server.
+
 ## Testing
 
 ### Static Analysis
