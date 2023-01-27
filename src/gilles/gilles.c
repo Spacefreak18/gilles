@@ -9,9 +9,7 @@
 #include "helper/parameters.h"
 #include "helper/dirhelper.h"
 #include "helper/confighelper.h"
-//#include "simulatorapi/simdata.h"
 #include "slog/slog.h"
-
 
 
 int create_dir(char* dir)
@@ -81,35 +79,7 @@ int main(int argc, char** argv)
     {
         slog_disable(SLOG_DEBUG);
     }
-    /*
-    slogi("Loading configuration file: %s", config_file_str);
-    config_t cfg;
-    config_init(&cfg);
-    config_setting_t* config_devices = NULL;
 
-    Metric* m = malloc(sizeof(Metric));
-    if (!config_read_file(&cfg, config_file_str))
-    {
-        fprintf(stderr, "%s:%d - %s\n", config_error_file(&cfg), config_error_line(&cfg), config_error_text(&cfg));
-    }
-    else
-    {
-        slogi("Openend raceengineer configuration file");
-        config_devices = config_lookup(&cfg, "monitor");
-        config_setting_t* config_device = config_setting_get_elem(config_devices, 0);
-
-
-
-        config_setting_lookup_string(config_device, "name", &m->name);
-
-        config_setting_lookup_string(config_device, "afile0", &m->afile0);
-        config_setting_lookup_string(config_device, "afile1", &m->afile1);
-        config_setting_lookup_string(config_device, "afile2", &m->afile2);
-
-        config_setting_lookup_float(config_device, "thresh1", &m->thresh1);
-        config_setting_lookup_float(config_device, "thresh2", &m->thresh2);
-    }
-    */
     looper(1, p);
 
     free(config_file_str);
