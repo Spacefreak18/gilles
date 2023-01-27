@@ -110,7 +110,7 @@ int main(int argc, char** argv)
         config_setting_lookup_float(config_device, "thresh2", &m->thresh2);
     }
     */
-    looper(1);
+    looper(1, p);
 
     free(config_file_str);
     free(cache_dir_str);

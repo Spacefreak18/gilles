@@ -1,13 +1,13 @@
 #ifndef _PARAMETERS_H
 #define _PARAMETERS_H
 
+#include <stdbool.h>
+
 typedef struct
 {
     int   program_action;
     const char* sim_string;
-    const char* save_file;
-    int max_revs;
-    int granularity;
+    bool mqtt;
     int verbosity_count;
 }
 Parameters;
@@ -15,8 +15,6 @@ Parameters;
 typedef enum
 {
     A_PLAY          = 0,
-    A_CONFIG_TACH   = 1,
-    A_CONFIG_SHAKER = 2
 }
 ProgramAction;
 

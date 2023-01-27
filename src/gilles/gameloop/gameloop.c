@@ -1,7 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <ncurses.h>
 #include <signal.h>
+#include <MQTTClient.h>
 
 #include "gameloop.h"
 #include "../helper/parameters.h"
@@ -11,6 +13,13 @@
 #include "../slog/slog.h"
 
 #define DEFAULT_UPDATE_RATE      100
+
+#define ADDRESS     "tcp://localhost:1883"
+#define CLIENTID    "gilles"
+#define TOPIC       "telemetry"
+//#define PAYLOAD     "Hello, MQTT!"
+#define QOS         0
+#define TIMEOUT     10000L
 
 WINDOW* win1;
 WINDOW* win2;
@@ -82,7 +91,7 @@ int curses_init()
     box(win4, 0, 0);
 }
 
-int looper(Simulator simulator)
+int looper(Simulator simulator, Parameters* p)
 {
 
     SimData* simdata = malloc(sizeof(SimData));
@@ -100,10 +109,55 @@ int looper(Simulator simulator)
 
     timeout(DEFAULT_UPDATE_RATE);
 
+    bool mqtt = p->mqtt;
+    bool mqtt_connected = false;
+
+    MQTTClient client;
+    MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
+    MQTTClient_message pubmsg = MQTTClient_message_initializer;
+    MQTTClient_deliveryToken token;
+    int rc;
+
+    // Create a new MQTT client
+    MQTTClient_create(&client, ADDRESS, CLIENTID,
+        MQTTCLIENT_PERSISTENCE_NONE, NULL);
+
+    // Connect to the MQTT server
+    if (mqtt == true)
+    {
+        conn_opts.keepAliveInterval = 20;
+        conn_opts.cleansession = 1;
+        if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
+            MQTTClient_disconnect(client, 10000);
+            sloge("Failed to connect, return code %d", rc);
+            //exit(-1);
+        }
+        mqtt_connected = true;
+    }
+
     int go = true;
     while (go == true)
     {
         simdatamap(simdata, simmap, simulator);
+
+        if (mqtt_connected == true)
+        {
+            char payloads[6][20];
+            sprintf(payloads[0], "gas, lap=%i, %04f", simdata->lap, simdata->gas);
+            sprintf(payloads[1], "brake, lap=%i, %04f", simdata->lap, simdata->brake);
+            sprintf(payloads[2], "steer, lap=%i, %04f", simdata->lap, simdata->brake);
+            sprintf(payloads[3], "gear, lap=%i, %04i", simdata->lap, simdata->gear);
+            sprintf(payloads[4], "speed, lap=%i, %04i", simdata->lap, simdata->velocity);
+
+            for (int k =0; k < 6; k++)
+            {
+                pubmsg.payload = payloads[k];
+                pubmsg.payloadlen = strlen(payloads[k]);
+                pubmsg.qos = QOS;
+                pubmsg.retained = 0;
+                MQTTClient_publishMessage(client, TOPIC, &pubmsg, &token);
+            }
+        }
 
         wclear(win1);
         wclear(win2);
@@ -504,6 +558,12 @@ int looper(Simulator simulator)
     wrefresh(win1);
     delwin(win1);
     endwin();
+
+    if (mqtt_connected == true)
+    {
+        MQTTClient_disconnect(client, 10000);
+    }
+    MQTTClient_destroy(&client);
 
     free(simdata);
     free(simmap);

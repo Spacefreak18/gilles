@@ -15,21 +15,21 @@ ConfigError getParameters(int argc, char** argv, Parameters* p)
 
     // set return structure defaults
     p->program_action      = 0;
-    p->max_revs            = 0;
+    p->mqtt                = false;
     p->verbosity_count     = 0;
 
     // setup argument handling structures
-    const char* progname = "csimtelem";
+    const char* progname = "gilles";
 
-    struct arg_lit* arg_verbosity1   = arg_litn("v","verbose", 0, 2, "increase logging verbosity");
-    struct arg_lit* arg_verbosity2   = arg_litn("v","verbose", 0, 2, "increase logging verbosity");
+    struct arg_lit* arg_verbosity   = arg_litn("v","verbose", 0, 2, "increase logging verbosity");
 
     struct arg_rex* cmd1             = arg_rex1(NULL, NULL, "play", NULL, REG_ICASE, NULL);
     struct arg_str* arg_sim          = arg_strn("s", "sim", "<gamename>", 0, 1, NULL);
+    struct arg_lit* arg_mqtt             = arg_lit0("S",  NULL, "send data to local mqtt server");
     struct arg_lit* help             = arg_litn(NULL,"help", 0, 1, "print this help and exit");
     struct arg_lit* vers             = arg_litn(NULL,"version", 0, 1, "print version information and exit");
-    struct arg_end* end             = arg_end(20);
-    void* argtable[]                = {cmd1,arg_sim,arg_verbosity1,help,vers,end};
+    struct arg_end* end              = arg_end(20);
+    void* argtable[]                 = {cmd1,arg_sim,arg_verbosity,arg_mqtt,help,vers,end};
     int nerrors;
 
 
@@ -46,7 +46,11 @@ ConfigError getParameters(int argc, char** argv, Parameters* p)
     {
         p->program_action = A_PLAY;
         p->sim_string = arg_sim->sval[0];
-        p->verbosity_count = arg_verbosity1->count;
+        p->verbosity_count = arg_verbosity->count;
+        if (arg_mqtt->count > 0)
+        {
+            p->mqtt = true;
+        }
         exitcode = E_SUCCESS_AND_DO;
     }
 

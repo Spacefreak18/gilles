@@ -17,6 +17,7 @@ set(CMAKE_BUILD_TYPE Debug)
 project(gilles)
 
 set(CMAKE_EXE_LINKER_FLAGS "-Wl,--no-as-needed -ldl")
+find_package(eclipse-paho-mqtt-c REQUIRED)
 
 add_subdirectory(src/gilles/gameloop)
 add_subdirectory(src/gilles/simulatorapi)
@@ -24,7 +25,7 @@ add_subdirectory(src/gilles/helper)
 add_subdirectory(src/gilles/slog)
 
 add_executable(gilles src/gilles/gilles.c)
-target_link_libraries(gilles m ${LIBUSB_LIBRARY} ncurses argtable2 config gameloop helper slog simulatorapi)
+target_link_libraries(gilles m ncurses argtable2 config gameloop helper slog simulatorapi eclipse-paho-mqtt-c::paho-mqtt3c)
 
 
 # used for enabling additional compiler options if supported
