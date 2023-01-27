@@ -16,6 +16,7 @@ set(CMAKE_BUILD_TYPE Debug)
 
 project(gilles)
 
+set(CMAKE_EXE_LINKER_FLAGS "-Wl,--no-as-needed -ldl")
 
 add_subdirectory(src/gilles/gameloop)
 add_subdirectory(src/gilles/simulatorapi)
