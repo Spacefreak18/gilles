@@ -260,7 +260,7 @@ int looper(Simulator simulator, Parameters* p)
             wattrset(win1, COLOR_PAIR(2));
             wprintw(win1, "%.0f", simdata->tyrewear[0]);
             wattrset(win1, COLOR_PAIR(1));
-            wprintw(win1, "              wear ");
+            wprintw(win1, "               wear ");
             wattrset(win1, COLOR_PAIR(2));
             wprintw(win1, "%.0f\n", simdata->tyrewear[1]);
 
@@ -296,7 +296,7 @@ int looper(Simulator simulator, Parameters* p)
             wattrset(win1, COLOR_PAIR(2));
             wprintw(win1, "%.0f", simdata->tyrewear[2]);
             wattrset(win1, COLOR_PAIR(1));
-            wprintw(win1, "              wear ");
+            wprintw(win1, "               wear ");
             wattrset(win1, COLOR_PAIR(2));
             wprintw(win1, "%.0f\n", simdata->tyrewear[3]);
 
