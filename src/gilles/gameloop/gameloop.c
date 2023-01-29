@@ -466,9 +466,13 @@ int looper(Simulator simulator, Parameters* p)
             // this will take some work and testing
             int thisx, thisy;
             getmaxyx(win4, thisx, thisy);
-            int maxcars = thisy/5;
-            int displaycars = maxcars;
-            if (simdata->numcars < maxcars)
+            int maxdispcars = thisy/5;
+            int displaycars = maxdispcars;
+            if (displaycars > MAXCARS)
+            {
+                displaycars = MAXCARS;
+            }
+            if (simdata->numcars < displaycars)
             {
                 displaycars = simdata->numcars;
             }
@@ -482,9 +486,10 @@ int looper(Simulator simulator, Parameters* p)
                 }
 
                 wattrset(win4, COLOR_PAIR(2));
+                int maxstrlen = 20;
                 wprintw(win4, " %02d ", simdata->cars[i].pos);
-                wprintw(win4, " %-20s   ", simdata->cars[i].driver);
-                wprintw(win4, " %-20s  ", simdata->cars[i].car);
+                wprintw(win4, " %-*.*s   ", maxstrlen, maxstrlen, simdata->cars[i].driver);
+                wprintw(win4, " %-*.*s  ", maxstrlen, maxstrlen, simdata->cars[i].car);
                 wprintw(win4, " %d  ", simdata->cars[i].lap);
 
                 char clastlap[14];
