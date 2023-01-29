@@ -13,3 +13,4 @@ set(simulatorapi_source_files
 )
 
 add_library(simulatorapi STATIC ${simulatorapi_source_files})
+target_compile_definitions(simulatorapi PRIVATE SIMMAP_ALL)
