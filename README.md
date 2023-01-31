@@ -10,6 +10,7 @@ ncurses based telemetry monitor for racing sims
 ## Dependencies
 - argtable2
 - libconfig
+- ncurses
 - slog (static)
 - [simshmbridge](https://github.com/spacefreak18/simshmbridge)
 - [simapi](https://github.com/spacefreak18/simapi)
