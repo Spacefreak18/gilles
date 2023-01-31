@@ -11,7 +11,7 @@ ncurses based telemetry monitor for racing sims
 - argtable2
 - libconfig
 - slog (static)
-- [wine-linux-shm-adapter](https://github.com/spacefreak18/wine-linux-shm-adapter)
+- [simshmbridge](https://github.com/spacefreak18/simshmbridge)
 - [simapi](https://github.com/spacefreak18/simapi)
 
 ## Building
