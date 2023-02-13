@@ -24,7 +24,7 @@ add_subdirectory(src/gilles/helper)
 add_subdirectory(src/gilles/slog)
 
 add_executable(gilles src/gilles/gilles.c)
-target_link_libraries(gilles m ncurses argtable2 config gameloop helper slog simulatorapi eclipse-paho-mqtt-c::paho-mqtt3c)
+target_link_libraries(gilles m ncursesw argtable2 config gameloop helper slog simulatorapi eclipse-paho-mqtt-c::paho-mqtt3c)
 
 # used for enabling additional compiler options if supported
 include(CheckCXXCompilerFlag)
