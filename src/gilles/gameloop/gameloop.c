@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ncurses.h>
 #include <signal.h>
+#include <time.h>
 #include <MQTTClient.h>
 
 #include "gameloop.h"
@@ -91,6 +92,23 @@ int curses_init()
     box(win4, 0, 0);
 }
 
+char * removeSpacesFromStr(char *string)
+{
+    int non_space_count = 0;
+
+    for (int i = 0; string[i] != '\0'; i++)
+    {
+        if (string[i] != ' ')
+        {
+            string[non_space_count] = string[i];
+            non_space_count++;
+        }
+    }
+
+    string[non_space_count] = '\0';
+    return string;
+}
+
 int looper(Simulator simulator, Parameters* p)
 {
 
@@ -104,6 +122,14 @@ int looper(Simulator simulator, Parameters* p)
         slogf("Fatal error getting simulator data");
         return error;
     }
+
+    time_t rawtime;
+    struct tm * timeinfo;
+    time ( &rawtime );
+    timeinfo = localtime ( &rawtime );
+    char datestring[30];
+    sprintf(datestring, "%s", asctime (timeinfo));
+    char *newdatestring = removeSpacesFromStr(datestring);
 
     curses_init();
 
@@ -142,12 +168,12 @@ int looper(Simulator simulator, Parameters* p)
 
         if (mqtt_connected == true)
         {
-            char payloads[6][20];
-            sprintf(payloads[0], "gas, lap=%i, %04f", simdata->lap, simdata->gas);
-            sprintf(payloads[1], "brake, lap=%i, %04f", simdata->lap, simdata->brake);
-            sprintf(payloads[2], "steer, lap=%i, %04f", simdata->lap, simdata->brake);
-            sprintf(payloads[3], "gear, lap=%i, %04i", simdata->lap, simdata->gear);
-            sprintf(payloads[4], "speed, lap=%i, %04i", simdata->lap, simdata->velocity);
+            char payloads[5][40];
+            sprintf(payloads[0], "gas, lap=%i, session=%s, %04f", simdata->lap, newdatestring, simdata->gas);
+            sprintf(payloads[1], "brake, lap=%i, session=%s, %04f", simdata->lap, newdatestring, simdata->brake);
+            sprintf(payloads[2], "steer, lap=%i, session=%s, %04f", simdata->lap, newdatestring, simdata->brake);
+            sprintf(payloads[3], "gear, lap=%i, session=%s, %04i", simdata->lap, newdatestring, simdata->gear);
+            sprintf(payloads[4], "speed, lap=%i, session=%s, %04i", simdata->lap, newdatestring, simdata->velocity);
 
             for (int k =0; k < 6; k++)
             {
