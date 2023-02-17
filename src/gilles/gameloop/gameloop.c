@@ -15,12 +15,14 @@
 
 #define DEFAULT_UPDATE_RATE      100
 
-#define ADDRESS     "tcp://localhost:1883"
+#define ADDRESS     "tcp://mqtt.brak:1883"
 #define CLIENTID    "gilles"
 #define TOPIC       "telemetry"
 //#define PAYLOAD     "Hello, MQTT!"
 #define QOS         0
 #define TIMEOUT     10000L
+
+char datestring[30];
 
 WINDOW* win1;
 WINDOW* win2;
@@ -109,6 +111,15 @@ char * removeSpacesFromStr(char *string)
     return string;
 }
 
+void update_date()
+{
+    time_t rawtime;
+    struct tm * timeinfo;
+    time ( &rawtime );
+    timeinfo = localtime ( &rawtime );
+    sprintf(datestring, "%.24s", asctime (timeinfo));
+}
+
 int looper(Simulator simulator, Parameters* p)
 {
 
@@ -116,21 +127,12 @@ int looper(Simulator simulator, Parameters* p)
     SimMap* simmap = malloc(sizeof(SimMap));
 
     int error = siminit(simdata, simmap, simulator);
-
     if (error != GILLES_ERROR_NONE)
     {
         slogf("Fatal error getting simulator data");
         return error;
     }
-
-    time_t rawtime;
-    struct tm * timeinfo;
-    time ( &rawtime );
-    timeinfo = localtime ( &rawtime );
-    char datestring[30];
-    sprintf(datestring, "%s", asctime (timeinfo));
-    char *newdatestring = removeSpacesFromStr(datestring);
-
+    
     curses_init();
 
     timeout(DEFAULT_UPDATE_RATE);
@@ -146,7 +148,7 @@ int looper(Simulator simulator, Parameters* p)
 
     // Create a new MQTT client
     MQTTClient_create(&client, ADDRESS, CLIENTID,
-        MQTTCLIENT_PERSISTENCE_NONE, NULL);
+    MQTTCLIENT_PERSISTENCE_NONE, NULL);
 
     // Connect to the MQTT server
     if (mqtt == true)
@@ -162,20 +164,30 @@ int looper(Simulator simulator, Parameters* p)
     }
 
     int go = true;
+    char lastsimstatus = false;
     while (go == true)
     {
         simdatamap(simdata, simmap, simulator);
-
-        if (mqtt_connected == true)
+        
+        char* newdatestring;
+        char simstatus = (simdata->simstatus > 0) ? true : false;
+        if (simdata->simstatus > 0 && simstatus != lastsimstatus)
         {
-            char payloads[5][40];
-            sprintf(payloads[0], "gas, lap=%i, session=%s, %04f", simdata->lap, newdatestring, simdata->gas);
-            sprintf(payloads[1], "brake, lap=%i, session=%s, %04f", simdata->lap, newdatestring, simdata->brake);
-            sprintf(payloads[2], "steer, lap=%i, session=%s, %04f", simdata->lap, newdatestring, simdata->brake);
-            sprintf(payloads[3], "gear, lap=%i, session=%s, %04i", simdata->lap, newdatestring, simdata->gear);
-            sprintf(payloads[4], "speed, lap=%i, session=%s, %04i", simdata->lap, newdatestring, simdata->velocity);
+            update_date();
+            newdatestring = removeSpacesFromStr(datestring);
+        }
+        lastsimstatus = simstatus;
 
-            for (int k =0; k < 6; k++)
+        if (mqtt_connected == true && simdata->simstatus > 0)
+        {
+            char payloads[5][60];
+            sprintf(payloads[0], "telemetry,lap=%i,session=%s gas=%04f", simdata->lap, newdatestring, simdata->gas);
+            sprintf(payloads[1], "telemetry,lap=%i,session=%s brake=%04f", simdata->lap, newdatestring, simdata->brake);
+            sprintf(payloads[2], "telemetry,lap=%i,session=%s steer=%04f", simdata->lap, newdatestring, simdata->brake);
+            sprintf(payloads[3], "telemetry,lap=%i,session=%s gear=%04i", simdata->lap, newdatestring, simdata->gear);
+            sprintf(payloads[4], "telemetry,lap=%i,session=%s speed=%04i", simdata->lap, newdatestring, simdata->velocity);
+
+            for (int k =0; k < 5; k++)
             {
                 pubmsg.payload = payloads[k];
                 pubmsg.payloadlen = strlen(payloads[k]);
