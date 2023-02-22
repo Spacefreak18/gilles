@@ -15,7 +15,7 @@
 
 #define DEFAULT_UPDATE_RATE      100
 
-#define ADDRESS     "tcp://mqtt.brak:1883"
+#define ADDRESS     "tcp://localhost:1883"
 #define CLIENTID    "gilles"
 #define TOPIC       "telemetry"
 //#define PAYLOAD     "Hello, MQTT!"
