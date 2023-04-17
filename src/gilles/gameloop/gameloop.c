@@ -120,82 +120,28 @@ void update_date()
     sprintf(datestring, "%.24s", asctime (timeinfo));
 }
 
-int looper(Simulator simulator, Parameters* p)
+void* looper(void* thargs)
 {
-
+    Parameters* p = (Parameters*) thargs;
     SimData* simdata = malloc(sizeof(SimData));
     SimMap* simmap = malloc(sizeof(SimMap));
 
-    int error = siminit(simdata, simmap, simulator);
+    int error = siminit(simdata, simmap, 1);
     if (error != GILLES_ERROR_NONE)
     {
         slogf("Fatal error getting simulator data");
-        return error;
+        //return error;
     }
     
     curses_init();
 
     timeout(DEFAULT_UPDATE_RATE);
 
-    bool mqtt = p->mqtt;
-    bool mqtt_connected = false;
-
-    MQTTClient client;
-    MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
-    MQTTClient_message pubmsg = MQTTClient_message_initializer;
-    MQTTClient_deliveryToken token;
-    int rc;
-
-    // Create a new MQTT client
-    MQTTClient_create(&client, ADDRESS, CLIENTID,
-    MQTTCLIENT_PERSISTENCE_NONE, NULL);
-
-    // Connect to the MQTT server
-    if (mqtt == true)
-    {
-        conn_opts.keepAliveInterval = 20;
-        conn_opts.cleansession = 1;
-        if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
-            MQTTClient_disconnect(client, 10000);
-            sloge("Failed to connect, return code %d", rc);
-            //exit(-1);
-        }
-        mqtt_connected = true;
-    }
-
     int go = true;
     char lastsimstatus = false;
     while (go == true)
     {
-        simdatamap(simdata, simmap, simulator);
-        
-        char* newdatestring;
-        char simstatus = (simdata->simstatus > 0) ? true : false;
-        if (simdata->simstatus > 0 && simstatus != lastsimstatus)
-        {
-            update_date();
-            newdatestring = removeSpacesFromStr(datestring);
-        }
-        lastsimstatus = simstatus;
-
-        if (mqtt_connected == true && simdata->simstatus > 0)
-        {
-            char payloads[5][60];
-            sprintf(payloads[0], "telemetry,lap=%i,session=%s gas=%04f", simdata->lap, newdatestring, simdata->gas);
-            sprintf(payloads[1], "telemetry,lap=%i,session=%s brake=%04f", simdata->lap, newdatestring, simdata->brake);
-            sprintf(payloads[2], "telemetry,lap=%i,session=%s steer=%04f", simdata->lap, newdatestring, simdata->brake);
-            sprintf(payloads[3], "telemetry,lap=%i,session=%s gear=%04i", simdata->lap, newdatestring, simdata->gear);
-            sprintf(payloads[4], "telemetry,lap=%i,session=%s speed=%04i", simdata->lap, newdatestring, simdata->velocity);
-
-            for (int k =0; k < 5; k++)
-            {
-                pubmsg.payload = payloads[k];
-                pubmsg.payloadlen = strlen(payloads[k]);
-                pubmsg.qos = QOS;
-                pubmsg.retained = 0;
-                MQTTClient_publishMessage(client, TOPIC, &pubmsg, &token);
-            }
-        }
+        simdatamap(simdata, simmap, 1);
 
         wclear(win1);
         wclear(win2);
@@ -602,6 +548,90 @@ int looper(Simulator simulator, Parameters* p)
     delwin(win1);
     endwin();
 
+    free(simdata);
+    free(simmap);
+
+    //return 0;
+}
+
+void* b4madmqtt(void* thargs)
+{
+    Parameters* p = (Parameters*) thargs;
+    SimData* simdata = malloc(sizeof(SimData));
+    SimMap* simmap = malloc(sizeof(SimMap));
+
+    int error = siminit(simdata, simmap, 1);
+    if (error != GILLES_ERROR_NONE)
+    {
+        slogf("Fatal error getting simulator data");
+        //return error;
+    }
+
+    bool mqtt = p->mqtt;
+    bool mqtt_connected = false;
+
+    MQTTClient client;
+    MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
+    MQTTClient_message pubmsg = MQTTClient_message_initializer;
+    MQTTClient_deliveryToken token;
+    int rc;
+
+    // Create a new MQTT client
+    MQTTClient_create(&client, ADDRESS, CLIENTID,
+    MQTTCLIENT_PERSISTENCE_NONE, NULL);
+
+    // Connect to the MQTT server
+    if (mqtt == true)
+    {
+        conn_opts.keepAliveInterval = 20;
+        conn_opts.cleansession = 1;
+        if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
+            MQTTClient_disconnect(client, 10000);
+            sloge("Failed to connect, return code %d", rc);
+            //exit(-1);
+        }
+        mqtt_connected = true;
+    }
+
+    int go = false;
+    if (mqtt_connected == true)
+    {
+        go = true;
+    }
+    char lastsimstatus = false;
+    while (go == true && p->program_state == 1)
+    {
+        simdatamap(simdata, simmap, 1);
+
+        char* newdatestring;
+        char simstatus = (simdata->simstatus > 0) ? true : false;
+        if (simdata->simstatus > 0 && simstatus != lastsimstatus)
+        {
+            update_date();
+            newdatestring = removeSpacesFromStr(datestring);
+        }
+        lastsimstatus = simstatus;
+
+        if (mqtt_connected == true && simdata->simstatus > 0)
+        {
+            char payloads[5][60];
+            sprintf(payloads[0], "telemetry,lap=%i,session=%s gas=%04f", simdata->lap, newdatestring, simdata->gas);
+            sprintf(payloads[1], "telemetry,lap=%i,session=%s brake=%04f", simdata->lap, newdatestring, simdata->brake);
+            sprintf(payloads[2], "telemetry,lap=%i,session=%s steer=%04f", simdata->lap, newdatestring, simdata->brake);
+            sprintf(payloads[3], "telemetry,lap=%i,session=%s gear=%04i", simdata->lap, newdatestring, simdata->gear);
+            sprintf(payloads[4], "telemetry,lap=%i,session=%s speed=%04i", simdata->lap, newdatestring, simdata->velocity);
+
+            for (int k =0; k < 5; k++)
+            {
+                pubmsg.payload = payloads[k];
+                pubmsg.payloadlen = strlen(payloads[k]);
+                pubmsg.qos = QOS;
+                pubmsg.retained = 0;
+                MQTTClient_publishMessage(client, TOPIC, &pubmsg, &token);
+            }
+        }
+
+    }
     if (mqtt_connected == true)
     {
         MQTTClient_disconnect(client, 10000);
@@ -611,5 +641,5 @@ int looper(Simulator simulator, Parameters* p)
     free(simdata);
     free(simmap);
 
-    return 0;
+    //return 0;
 }

@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <libconfig.h>
+#include <pthread.h>
 
 #include "gameloop/gameloop.h"
 #include "helper/parameters.h"
@@ -46,6 +47,7 @@ int main(int argc, char** argv)
         goto cleanup_final;
     }
     gs->program_action = p->program_action;
+    p->program_state = 1;
 
     char* home_dir_str = gethome();
     create_user_dir("/.config/");
@@ -80,7 +82,29 @@ int main(int argc, char** argv)
         slog_disable(SLOG_DEBUG);
     }
 
-    looper(1, p);
+    pthread_t ui_thread;
+    pthread_t mqtt_thread;
+
+    if (pthread_create(&ui_thread, NULL, &looper, p) != 0)
+    {
+        printf("Uh-oh!\n");
+        return -1;
+    }
+    if (p->mqtt == true)
+    {
+        if (pthread_create(&mqtt_thread, NULL, &b4madmqtt, p) != 0)
+        {
+            printf("Uh-oh!\n");
+            return -1;
+        }
+    }
+
+    pthread_join(ui_thread, NULL);
+    p->program_state = -1;
+    if (p->mqtt == true)
+    {
+        pthread_join(mqtt_thread, NULL);
+    }
 
     free(config_file_str);
     free(cache_dir_str);

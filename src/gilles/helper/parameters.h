@@ -6,6 +6,7 @@
 typedef struct
 {
     int   program_action;
+    int   program_state;
     const char* sim_string;
     bool mqtt;
     int verbosity_count;
