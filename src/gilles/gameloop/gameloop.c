@@ -4,6 +4,7 @@
 #include <ncurses.h>
 #include <signal.h>
 #include <time.h>
+#include <sys/time.h>
 #include <MQTTClient.h>
 
 #include "gameloop.h"
@@ -12,6 +13,8 @@
 #include "../simulatorapi/simapi/simapi/simdata.h"
 #include "../simulatorapi/simapi/simapi/simmapper.h"
 #include "../slog/slog.h"
+
+#include <json-c/json.h>
 
 #define DEFAULT_UPDATE_RATE      100
 
@@ -32,6 +35,8 @@ WINDOW* win4;
 int winx, winy;
 
 int win23y, win23x;
+
+
 
 void handle_winch(int sig)
 {
@@ -559,6 +564,8 @@ void* b4madmqtt(void* thargs)
     Parameters* p = (Parameters*) thargs;
     SimData* simdata = malloc(sizeof(SimData));
     SimMap* simmap = malloc(sizeof(SimMap));
+    long unix_time_start;
+    char time_buff[11];
 
     int error = siminit(simdata, simmap, 1);
     if (error != GILLES_ERROR_NONE)
@@ -588,6 +595,7 @@ void* b4madmqtt(void* thargs)
         if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
             MQTTClient_disconnect(client, 10000);
             sloge("Failed to connect, return code %d", rc);
+            return NULL;
             //exit(-1);
         }
         mqtt_connected = true;
@@ -601,34 +609,92 @@ void* b4madmqtt(void* thargs)
     char lastsimstatus = false;
     while (go == true && p->program_state == 1)
     {
-        simdatamap(simdata, simmap, 1);
 
-        char* newdatestring;
         char simstatus = (simdata->simstatus > 0) ? true : false;
         if (simdata->simstatus > 0 && simstatus != lastsimstatus)
         {
-            update_date();
-            newdatestring = removeSpacesFromStr(datestring);
+            //update_date();
+            unix_time_start = (unsigned long) time(NULL);
+            sprintf(time_buff, "%lu", unix_time_start);
+            //sprintf(time_buff, "%lu", (unsigned long)time(NULL));
+            //newdatestring = removeSpacesFromStr(datestring);
         }
         lastsimstatus = simstatus;
+        simdatamap(simdata, simmap, 1);
 
         if (mqtt_connected == true && simdata->simstatus > 0)
         {
-            char payloads[5][60];
-            sprintf(payloads[0], "telemetry,lap=%i,session=%s gas=%04f", simdata->lap, newdatestring, simdata->gas);
-            sprintf(payloads[1], "telemetry,lap=%i,session=%s brake=%04f", simdata->lap, newdatestring, simdata->brake);
-            sprintf(payloads[2], "telemetry,lap=%i,session=%s steer=%04f", simdata->lap, newdatestring, simdata->brake);
-            sprintf(payloads[3], "telemetry,lap=%i,session=%s gear=%04i", simdata->lap, newdatestring, simdata->gear);
-            sprintf(payloads[4], "telemetry,lap=%i,session=%s speed=%04i", simdata->lap, newdatestring, simdata->velocity);
 
-            for (int k =0; k < 5; k++)
-            {
-                pubmsg.payload = payloads[k];
-                pubmsg.payloadlen = strlen(payloads[k]);
-                pubmsg.qos = QOS;
-                pubmsg.retained = 0;
-                MQTTClient_publishMessage(client, TOPIC, &pubmsg, &token);
-            }
+            json_object *root = json_object_new_object();
+            //if (!root)
+            //   return;
+
+            json_object *child = json_object_new_object();
+
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            unsigned long long millisecondsSinceEpoch = (unsigned long long)(tv.tv_sec) * 1000 + (unsigned long long)(tv.tv_usec) / 1000;
+
+            json_object_object_add(root, "time", json_object_new_int64(millisecondsSinceEpoch)); //unix time milliseconds
+
+            const char* topic_root = "racing/gilles/TuxRacerX";
+            //const char* game_name = "Assetto Corsa (64 bit)";
+            const char* game_name = "assetto_64_bit";
+            const char* session_type = "Practice";
+
+            json_object_object_add(child, "CarModel", json_object_new_string(simdata->car));
+            json_object_object_add(child, "GameName", json_object_new_string(game_name));
+            json_object_object_add(child, "SessionId", json_object_new_int(unix_time_start));
+            json_object_object_add(child, "SessionTypeName", json_object_new_string("Practice"));
+            json_object_object_add(child, "TrackCode", json_object_new_string(simdata->track));
+
+            json_object_object_add(child, "Clutch", json_object_new_double(simdata->clutch));
+            json_object_object_add(child, "Brake", json_object_new_double(simdata->brake));
+            json_object_object_add(child, "Throtte", json_object_new_double(simdata->gas));
+            json_object_object_add(child, "HandBrake", json_object_new_double(simdata->handbrake));
+            json_object_object_add(child, "SteeringAngle", json_object_new_double(simdata->steer));
+            json_object_object_add(child, "Rpms", json_object_new_int(simdata->rpms));
+            json_object_object_add(child, "Gear", json_object_new_int(simdata->gear));
+            json_object_object_add(child, "SpeedMs", json_object_new_double(simdata->velocity * 0.2777778));
+            json_object_object_add(child, "DistanceRoundTrack", json_object_new_double(simdata->trackdistancearound));
+            json_object_object_add(child, "WorldPosition_x", json_object_new_double(simdata->worldposx));
+            json_object_object_add(child, "WorldPosition_y", json_object_new_double(simdata->worldposy));
+            json_object_object_add(child, "WorldPosition_z", json_object_new_double(simdata->worldposz));
+            json_object_object_add(child, "CurrentLap", json_object_new_int(simdata->playerlaps));
+            json_object_object_add(child, "CurrentLapTime", json_object_new_int(simdata->currentlapinseconds));
+            json_object_object_add(child, "LapTimePrevious", json_object_new_int(simdata->lastlapinseconds));
+            json_object_object_add(child, "CurrentLapIsValid", json_object_new_int(simdata->lapisvalid));
+            json_object_object_add(child, "PreviousLapWasValid", json_object_new_int(1));
+
+            json_object_object_add(root, "telemetry", child);
+
+            slogi(json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
+
+            // TODO: generate this topic string only once
+            char* topic = ( char* ) malloc(1 + strlen(topic_root) + strlen("/") + strlen(game_name) + strlen("/") + strlen(session_type)
+                    + strlen("/") + strlen(simdata->car) + strlen("/") + strlen(simdata->track) + strlen("/") + 11);
+            strcpy(topic, topic_root);
+            strcat(topic, "/");
+            strcat(topic, time_buff);
+            strcat(topic, "/");
+            strcat(topic, game_name);
+            strcat(topic, "/");
+            strcat(topic, simdata->track);
+            strcat(topic, "/");
+            strcat(topic, simdata->car);
+            strcat(topic, "/");
+            strcat(topic, session_type);
+
+            char* payload1;
+            sprintf(payload1, json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
+            pubmsg.payload = payload1;
+            //pubmsg.payload = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
+            //pubmsg.payloadlen = strlen(json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
+            pubmsg.payloadlen = strlen(payload1);
+            pubmsg.qos= QOS;
+            pubmsg.retained = 0;
+
+            MQTTClient_publishMessage(client, topic, &pubmsg, &token);
         }
 
     }
@@ -640,6 +706,6 @@ void* b4madmqtt(void* thargs)
 
     free(simdata);
     free(simmap);
-
+    return NULL;
     //return 0;
 }
