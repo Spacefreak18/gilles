@@ -3,13 +3,30 @@
 
 #include <stdbool.h>
 
+#include "../simulatorapi/simapi/simapi/simapi.h"
+#include "../simulatorapi/simapi/simapi/simdata.h"
+#include "../simulatorapi/simapi/simapi/simmapper.h"
+
 typedef struct
 {
+    char* sim_string;
     int   program_action;
     int   program_state;
-    const char* sim_string;
-    bool mqtt;
-    int verbosity_count;
+
+    bool  cli;
+    bool  mqtt;
+    bool  mysql;
+    bool  simon;
+    int   verbosity_count;
+
+    char* mysql_user;
+    char* mysql_serv;
+    char* mysql_dbnm;
+    char* mysql_pass;
+
+    Simulator sim;
+    SimData* simdata;
+    SimMap* simmap;
 }
 Parameters;
 
@@ -28,6 +45,7 @@ typedef enum
 ConfigError;
 
 ConfigError getParameters(int argc, char** argv, Parameters* p);
+int freeparams(Parameters* p);
 
 struct _errordesc
 {

@@ -8,5 +8,6 @@ char* str2md5(const char* str, int length);
 bool does_directory_exist(char* path, char* dirname);
 void restrict_folders_to_cache(char* path, int cachesize);
 void delete_dir(char* path);
+bool file_exists(const char* file);
 
 #endif

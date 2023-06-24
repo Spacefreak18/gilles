@@ -1,20 +1,25 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <ncurses.h>
 #include <signal.h>
 #include <time.h>
 #include <sys/time.h>
 #include <MQTTClient.h>
+#include <poll.h>
+#include <termios.h>
+#include <hoel.h>
+#include <jansson.h>
 
 #include "gameloop.h"
 #include "../helper/parameters.h"
 #include "../helper/confighelper.h"
+#include "../helper/dirhelper.h"
 #include "../simulatorapi/simapi/simapi/simdata.h"
 #include "../simulatorapi/simapi/simapi/simmapper.h"
 #include "../slog/slog.h"
-
-#include <json-c/json.h>
 
 #define DEFAULT_UPDATE_RATE      100
 
@@ -125,19 +130,184 @@ void update_date()
     sprintf(datestring, "%.24s", asctime (timeinfo));
 }
 
-void* looper(void* thargs)
+
+int mainloop(Parameters* p)
 {
-    Parameters* p = (Parameters*) thargs;
+    pthread_t ui_thread;
+    pthread_t mqtt_thread;
+    pthread_t mysql_thread;
+
     SimData* simdata = malloc(sizeof(SimData));
     SimMap* simmap = malloc(sizeof(SimMap));
 
-    int error = siminit(simdata, simmap, 1);
-    if (error != GILLES_ERROR_NONE)
+    struct termios newsettings, canonicalmode;
+    tcgetattr(0, &canonicalmode);
+    newsettings = canonicalmode;
+    newsettings.c_lflag &= (~ICANON & ~ECHO);
+    newsettings.c_cc[VMIN] = 1;
+    newsettings.c_cc[VTIME] = 0;
+    tcsetattr(0, TCSANOW, &newsettings);
+    char ch;
+    struct pollfd mypoll = { STDIN_FILENO, POLLIN|POLLPRI };
+
+    p->simdata = simdata;
+    p->simmap = simmap;
+    fprintf(stdout, "Searching for sim data... Press q to quit...\n");
+
+    double update_rate = 1;
+    int go = true;
+    char lastsimstatus = false;
+    while (go == true)
     {
-        slogf("Fatal error getting simulator data");
-        //return error;
+
+
+
+
+
+        // check for running sims
+        if (file_exists("/dev/shm/acpmf_physics"))
+        {
+            if (file_exists("/dev/shm/acpmf_static"))
+            {
+                p->sim = SIMULATOR_ASSETTO_CORSA;
+                int error = siminit(simdata, simmap, 1);
+                if (error == 0)
+                {
+                    slogi("found Assetto Corsa, starting application...");
+                    p->simon = true;
+                }
+            }
+        }
+
+        if (p->simon == true)
+        {
+            if (p->cli == true)
+            {
+                if (pthread_create(&ui_thread, NULL, &clilooper, p) != 0)
+                {
+                    printf("Uh-oh!\n");
+                    return -1;
+                }
+            }
+            else
+            {
+                if (pthread_create(&ui_thread, NULL, &looper, p) != 0)
+                {
+                    printf("Uh-oh!\n");
+                    return -1;
+                }
+            }
+            //if (p->mqtt == true)
+            //{
+            //    if (pthread_create(&mqtt_thread, NULL, &b4madmqtt, p) != 0)
+            //    {
+            //        printf("Uh-oh!\n");
+            //        return -1;
+            //    }
+            //}
+            if (p->mysql == true)
+            {
+                if (pthread_create(&mysql_thread, NULL, &simviewmysql, p) != 0)
+                {
+                    printf("Uh-oh!\n");
+                    return -1;
+                }
+            }
+
+            pthread_join(ui_thread, NULL);
+            p->program_state = -1;
+            //if (p->mqtt == true)
+            //{
+            //    pthread_join(mqtt_thread, NULL);
+            //}
+            if (p->mysql == true)
+            {
+                pthread_join(mysql_thread, NULL);
+            }
+        }
+
+        if (p->simon == true)
+        {
+            p->simon = false;
+            fprintf(stdout, "Searching for sim data... Press q again to quit...\n");
+            sleep(2);
+        }
+
+        if( poll(&mypoll, 1, 1000.0/update_rate) )
+        {
+            scanf("%c", &ch);
+            if(ch == 'q')
+            {
+                go = false;
+            }
+        }
     }
-    
+
+    fprintf(stdout, "\n");
+    fflush(stdout);
+    tcsetattr(0, TCSANOW, &canonicalmode);
+
+    free(simdata);
+    free(simmap);
+
+    return 0;
+}
+
+void* clilooper(void* thargs)
+{
+    Parameters* p = (Parameters*) thargs;
+    SimData* simdata = p->simdata;
+    SimMap* simmap = p->simmap;
+
+    struct termios newsettings, canonicalmode;
+    tcgetattr(0, &canonicalmode);
+    newsettings = canonicalmode;
+    newsettings.c_lflag &= (~ICANON & ~ECHO);
+    newsettings.c_cc[VMIN] = 1;
+    newsettings.c_cc[VTIME] = 0;
+    tcsetattr(0, TCSANOW, &newsettings);
+    char ch;
+    struct pollfd mypoll = { STDIN_FILENO, POLLIN|POLLPRI };
+
+    fprintf(stdout, "Press q to quit...\n");
+    fprintf(stdout, "Press c for a useful readout of car telemetry...\n");
+    fprintf(stdout, "Press s for basic sesion information...\n");
+    fprintf(stdout, "Press l for basic lap / stint information...\n");
+
+    double update_rate = DEFAULT_UPDATE_RATE;
+    int go = true;
+    char lastsimstatus = false;
+    while (go == true)
+    {
+        simdatamap(simdata, simmap, p->sim);
+
+        if( poll(&mypoll, 1, 1000.0/update_rate) )
+        {
+            scanf("%c", &ch);
+            if(ch == 'q')
+            {
+                go = false;
+            }
+            if(ch == 'c')
+            {
+                slogi("speed: %i gear: %i", simdata->velocity, simdata->gear);
+            }
+        }
+    }
+
+    fprintf(stdout, "\n");
+    fflush(stdout);
+    tcsetattr(0, TCSANOW, &canonicalmode);
+
+    return 0;
+}
+
+void* looper(void* thargs)
+{
+    Parameters* p = (Parameters*) thargs;
+    SimData* simdata = p->simdata;
+    SimMap* simmap = p->simmap;
+
     curses_init();
 
     timeout(DEFAULT_UPDATE_RATE);
@@ -146,7 +316,7 @@ void* looper(void* thargs)
     char lastsimstatus = false;
     while (go == true)
     {
-        simdatamap(simdata, simmap, 1);
+        simdatamap(simdata, simmap, p->sim);
 
         wclear(win1);
         wclear(win2);
@@ -553,159 +723,273 @@ void* looper(void* thargs)
     delwin(win1);
     endwin();
 
-    free(simdata);
-    free(simmap);
 
     //return 0;
 }
 
-void* b4madmqtt(void* thargs)
+int getLastInsertID(struct _h_connection* conn)
+{
+    json_t* last_id = (h_last_insert_id(conn));
+    int id = json_integer_value(last_id);
+    json_decref(last_id);
+    return id;
+}
+
+int adddriver(struct _h_connection* conn, int driverid, const char* drivername)
+{
+    if (driverid > 0)
+    {
+        return driverid;
+    }
+    json_t *root = json_object();
+    json_t *json_arr = json_array();
+
+    json_object_set_new( root, "table", json_string("drivers") );
+    json_object_set_new( root, "values", json_arr );
+
+    json_t* values = json_object();
+    json_object_set_new(values, "driver_name", json_string(drivername));
+    json_object_set_new(values, "prev_name", json_string(drivername));
+    json_object_set_new(values, "steam64_id", json_integer(17));
+    json_object_set_new(values, "country", json_string("USA"));
+    json_array_append(json_arr, values);
+    int res = h_insert(conn, root, NULL);
+    json_decref(root);
+    json_decref(values);
+
+    driverid = getLastInsertID(conn);
+    return driverid;
+}
+
+int addtrackconfig(struct _h_connection* conn, int trackconfigid, const char* track, int length)
+{
+    //track_config_id | track_name | config_name | display_name | country | city | length
+    if (trackconfigid > 0)
+    {
+        return trackconfigid;
+    }
+    json_t *root = json_object();
+    json_t *json_arr = json_array();
+
+    json_object_set_new( root, "table", json_string(track) );
+    json_object_set_new( root, "values", json_arr );
+
+    json_t* values = json_object();
+    json_object_set_new(values, "track_name", json_string(track));
+    json_object_set_new(values, "config_name", json_string("default"));
+    json_object_set_new(values, "display_name", json_string(track));
+    json_object_set_new(values, "country", json_string("USA"));
+    json_object_set_new(values, "city", json_string("USA"));
+    json_object_set_new(values, "length", json_integer(length));
+
+    json_array_append(json_arr, values);
+    int res = h_insert(conn, root, NULL);
+    trackconfigid = getLastInsertID(conn);
+    json_decref(root);
+    json_decref(values);
+
+    return trackconfigid;
+}
+
+int addevent(struct _h_connection* conn, int track_config)
+{
+
+    json_t *root = json_object();
+    json_t *json_arr = json_array();
+
+    json_object_set_new( root, "table", json_string("events") );
+    json_object_set_new( root, "values", json_arr );
+
+    json_t* values = json_object();
+    json_object_set_new(values, "track_config_id", json_integer(track_config));
+    json_object_set_new(values, "event_name", json_string("default"));
+    //event_id | server_name | track_config_id | event_name | team_event | active | livery_preview | use_number | practice_duration | quali_duration | race_duration | race_duration_type | race_wait_time | race_extra_laps | reverse_grid_positions
+    json_array_append(json_arr, values);
+    int res = h_insert(conn, root, NULL);
+    json_decref(root);
+    json_decref(values);
+    return getLastInsertID(conn);
+}
+
+int addcar(struct _h_connection* conn, int carid, const char* carname)
+{
+
+    // car_id | display_name | car_name | manufacturer | car_class
+
+    if (carid > 0)
+    {
+        return carid;
+    }
+    json_t *root = json_object();
+    json_t *json_arr = json_array();
+
+    json_object_set_new( root, "table", json_string("cars") );
+    json_object_set_new( root, "values", json_arr );
+
+    json_t* values = json_object();
+    json_object_set_new(values, "display_name", json_string(carname));
+    json_object_set_new(values, "car_name", json_string(carname));
+    json_object_set_new(values, "manufacturer", json_string("Unknown"));
+    json_object_set_new(values, "car_class", json_string("Unknown"));
+    json_array_append(json_arr, values);
+    int res = h_insert(conn, root, NULL);
+    json_decref(root);
+    json_decref(values);
+
+    carid = getLastInsertID(conn);
+    return carid;
+
+}
+
+int gettrack(struct _h_connection* conn, const char* trackname)
+{
+
+    json_t *j_result;
+    char* where_clause = h_build_where_clause(conn, "config_name=%s AND track_name=%s", "default", trackname);
+    json_t* j_query = json_pack("{sss[s]s{s{ssss}}}", "table", "track_config", "columns", "track_config_id", "where", " ", "operator", "raw",
+            "value", where_clause);
+
+    //char* qq;
+    int res = h_select(conn, j_query, &j_result, NULL);
+    //slogi("here your query: %s", qq);
+  // Deallocate j_query since it won't be needed anymore
+  json_decref(j_query);
+  h_free(where_clause);
+  int track_config = -1;
+  // Test query execution result
+  if (res == H_OK) {
+    // Print result
+    char* dump = json_dumps(j_result, JSON_INDENT(2));
+    slogi("json select result is\n%s", dump);
+    int index1 = json_array_size(j_result);
+    if (index1 == 0)
+    {
+        slogw("no config for this track");
+    }
+    else {
+    json_t* jj = json_array_get(j_result, index1-1);
+    track_config = json_integer_value(json_object_get(jj, "track_config_id"));
+    }
+    // Deallocate data result
+    json_decref(j_result);
+    free(dump);
+  } else {
+    sloge("Error executing select query: %d", res);
+  }
+  return track_config;
+}
+
+int getdriver(struct _h_connection* conn, const char* driver_name)
+{
+    json_t *j_result;
+    char* where_clause = h_build_where_clause(conn, "driver_name=%s", driver_name);
+    json_t* j_query = json_pack("{sss[s]s{s{ssss}}}","table", "drivers", "columns", "driver_id", "where", " ", "operator", "raw",
+            "value", where_clause);
+
+    slogi("Looking for driver named %s", driver_name);
+    //char* qq;
+    int res = h_select(conn, j_query, &j_result, NULL);
+    //slogi("here your query: %s", qq);
+  // Deallocate j_query since it won't be needed anymore
+  json_decref(j_query);
+  h_free(where_clause);
+  int driver_id = -1;
+  // Test query execution result
+  if (res == H_OK) {
+    // Print result
+    char* dump = json_dumps(j_result, JSON_INDENT(2));
+    slogi("json select result is\n%s", dump);
+    int index1 = json_array_size(j_result);
+    if (index1 == 0)
+    {
+        slogw("no driver by this name");
+    }
+    else {
+    json_t* jj = json_array_get(j_result, index1-1);
+    driver_id = json_integer_value(json_object_get(jj, "driver_id"));
+    }
+    // Deallocate data result
+    json_decref(j_result);
+    free(dump);
+  } else {
+    sloge("Error executing select query: %d", res);
+  }
+  return driver_id;
+}
+
+int getcar(struct _h_connection* conn, const char* carname)
+{
+    json_t *j_result;
+    char* where_clause = h_build_where_clause(conn, "car_name=%s", carname);
+    json_t* j_query = json_pack("{sss[s]s{s{ssss}}}","table", "cars", "columns", "car_id", "where", " ", "operator", "raw",
+            "value", where_clause);
+
+    slogi("Looking for car named %s", carname);
+    //char* qq;
+    int res = h_select(conn, j_query, &j_result, NULL);
+    //slogi("here your query: %s", qq);
+  // Deallocate j_query since it won't be needed anymore
+  json_decref(j_query);
+  h_free(where_clause);
+  int car_id = -1;
+  // Test query execution result
+  if (res == H_OK) {
+    // Print result
+    char* dump = json_dumps(j_result, JSON_INDENT(2));
+    slogi("json select result is\n%s", dump);
+    int index1 = json_array_size(j_result);
+    if (index1 == 0)
+    {
+        slogw("no car by this name");
+    }
+    else {
+    json_t* jj = json_array_get(j_result, index1-1);
+    car_id = json_integer_value(json_object_get(jj, "car_id"));
+    }
+    // Deallocate data result
+    json_decref(j_result);
+    free(dump);
+  } else {
+    sloge("Error executing select query: %d", res);
+  }
+  return car_id;
+}
+
+
+
+void* simviewmysql(void* thargs)
 {
     Parameters* p = (Parameters*) thargs;
-    SimData* simdata = malloc(sizeof(SimData));
-    SimMap* simmap = malloc(sizeof(SimMap));
-    long unix_time_start;
-    char time_buff[11];
+    SimData* simdata = p->simdata;
+    SimMap* simmap = p->simmap;
 
-    int error = siminit(simdata, simmap, 1);
-    if (error != GILLES_ERROR_NONE)
-    {
-        slogf("Fatal error getting simulator data");
-        //return error;
-    }
+    struct _h_result result;
+    struct _h_connection * conn;
+    char* connectionstring = "host=zorak.brak dbname=gilles user=test password=thisisatest";
+    conn = h_connect_pgsql(connectionstring);
 
-    bool mqtt = p->mqtt;
-    bool mqtt_connected = false;
+    int trackconfig = gettrack(conn, simdata->track);
+    trackconfig = addtrackconfig(conn, trackconfig, simdata->track, simdata->trackdistancearound);
+    int eventid = addevent(conn, trackconfig);
+    int driverid = getdriver(conn, simdata->driver);
+    driverid = adddriver(conn, driverid, simdata->driver);
+    int carid = getcar(conn, simdata->car);
+    carid = addcar(conn, carid, simdata->car);
 
-    MQTTClient client;
-    MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
-    MQTTClient_message pubmsg = MQTTClient_message_initializer;
-    MQTTClient_deliveryToken token;
-    int rc;
+// sessions
+// session_id | event_id | event_type | track_time | session_name | start_time | duration_min | elapsed_ms | laps | weather | air_temp | road_temp | start_grip | current_grip | is_finished | finish_time | last_activity | http_port
 
-    // Create a new MQTT client
-    MQTTClient_create(&client, ADDRESS, CLIENTID,
-    MQTTCLIENT_PERSISTENCE_NONE, NULL);
+// stints
+// session_stint_id | driver_id | team_member_id | session_id | car_id | game_car_id | laps | valid_laps | best_lap_id | is_finished | started_at | finished_at
 
-    // Connect to the MQTT server
-    if (mqtt == true)
-    {
-        conn_opts.keepAliveInterval = 20;
-        conn_opts.cleansession = 1;
-        if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
-            MQTTClient_disconnect(client, 10000);
-            sloge("Failed to connect, return code %d", rc);
-            return NULL;
-            //exit(-1);
-        }
-        mqtt_connected = true;
-    }
+// stint laps
+// stint_lap_id | stint_id | sector_1 | sector_2 | sector_3 | grip | tyre | time | cuts | crashes | car_crashes | max_speed | avg_speed | finished_at
 
-    int go = false;
-    if (mqtt_connected == true)
-    {
-        go = true;
-    }
-    char lastsimstatus = false;
-    while (go == true && p->program_state == 1)
-    {
+// telemetry
+// lap_id | telemetry
 
-        char simstatus = (simdata->simstatus > 0) ? true : false;
-        if (simdata->simstatus > 0 && simstatus != lastsimstatus)
-        {
-            //update_date();
-            unix_time_start = (unsigned long) time(NULL);
-            sprintf(time_buff, "%lu", unix_time_start);
-            //sprintf(time_buff, "%lu", (unsigned long)time(NULL));
-            //newdatestring = removeSpacesFromStr(datestring);
-        }
-        lastsimstatus = simstatus;
-        simdatamap(simdata, simmap, 1);
 
-        if (mqtt_connected == true && simdata->simstatus > 0)
-        {
 
-            json_object *root = json_object_new_object();
-            //if (!root)
-            //   return;
-
-            json_object *child = json_object_new_object();
-
-            struct timeval tv;
-            gettimeofday(&tv, NULL);
-            unsigned long long millisecondsSinceEpoch = (unsigned long long)(tv.tv_sec) * 1000 + (unsigned long long)(tv.tv_usec) / 1000;
-
-            json_object_object_add(root, "time", json_object_new_int64(millisecondsSinceEpoch)); //unix time milliseconds
-
-            const char* topic_root = "racing/gilles/TuxRacerX";
-            //const char* game_name = "Assetto Corsa (64 bit)";
-            const char* game_name = "assetto_64_bit";
-            const char* session_type = "Practice";
-
-            json_object_object_add(child, "CarModel", json_object_new_string(simdata->car));
-            json_object_object_add(child, "GameName", json_object_new_string(game_name));
-            json_object_object_add(child, "SessionId", json_object_new_int(unix_time_start));
-            json_object_object_add(child, "SessionTypeName", json_object_new_string("Practice"));
-            json_object_object_add(child, "TrackCode", json_object_new_string(simdata->track));
-
-            json_object_object_add(child, "Clutch", json_object_new_double(simdata->clutch));
-            json_object_object_add(child, "Brake", json_object_new_double(simdata->brake));
-            json_object_object_add(child, "Throtte", json_object_new_double(simdata->gas));
-            json_object_object_add(child, "HandBrake", json_object_new_double(simdata->handbrake));
-            json_object_object_add(child, "SteeringAngle", json_object_new_double(simdata->steer));
-            json_object_object_add(child, "Rpms", json_object_new_int(simdata->rpms));
-            json_object_object_add(child, "Gear", json_object_new_int(simdata->gear));
-            json_object_object_add(child, "SpeedMs", json_object_new_double(simdata->velocity * 0.2777778));
-            json_object_object_add(child, "DistanceRoundTrack", json_object_new_double(simdata->trackdistancearound));
-            json_object_object_add(child, "WorldPosition_x", json_object_new_double(simdata->worldposx));
-            json_object_object_add(child, "WorldPosition_y", json_object_new_double(simdata->worldposy));
-            json_object_object_add(child, "WorldPosition_z", json_object_new_double(simdata->worldposz));
-            json_object_object_add(child, "CurrentLap", json_object_new_int(simdata->playerlaps));
-            json_object_object_add(child, "CurrentLapTime", json_object_new_int(simdata->currentlapinseconds));
-            json_object_object_add(child, "LapTimePrevious", json_object_new_int(simdata->lastlapinseconds));
-            json_object_object_add(child, "CurrentLapIsValid", json_object_new_int(simdata->lapisvalid));
-            json_object_object_add(child, "PreviousLapWasValid", json_object_new_int(1));
-
-            json_object_object_add(root, "telemetry", child);
-
-            slogi(json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
-
-            // TODO: generate this topic string only once
-            char* topic = ( char* ) malloc(1 + strlen(topic_root) + strlen("/") + strlen(game_name) + strlen("/") + strlen(session_type)
-                    + strlen("/") + strlen(simdata->car) + strlen("/") + strlen(simdata->track) + strlen("/") + 11);
-            strcpy(topic, topic_root);
-            strcat(topic, "/");
-            strcat(topic, time_buff);
-            strcat(topic, "/");
-            strcat(topic, game_name);
-            strcat(topic, "/");
-            strcat(topic, simdata->track);
-            strcat(topic, "/");
-            strcat(topic, simdata->car);
-            strcat(topic, "/");
-            strcat(topic, session_type);
-
-            char* payload1;
-            sprintf(payload1, json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
-            pubmsg.payload = payload1;
-            //pubmsg.payload = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
-            //pubmsg.payloadlen = strlen(json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
-            pubmsg.payloadlen = strlen(payload1);
-            pubmsg.qos= QOS;
-            pubmsg.retained = 0;
-
-            MQTTClient_publishMessage(client, topic, &pubmsg, &token);
-        }
-
-    }
-    if (mqtt_connected == true)
-    {
-        MQTTClient_disconnect(client, 10000);
-    }
-    MQTTClient_destroy(&client);
-
-    free(simdata);
-    free(simmap);
-    return NULL;
-    //return 0;
+    h_close_db(conn);
+    h_clean_connection(conn);
 }

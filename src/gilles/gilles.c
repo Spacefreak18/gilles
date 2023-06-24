@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -5,13 +6,13 @@
 #include <unistd.h>
 #include <libconfig.h>
 #include <pthread.h>
+#include <basedir_fs.h>
 
 #include "gameloop/gameloop.h"
 #include "helper/parameters.h"
 #include "helper/dirhelper.h"
 #include "helper/confighelper.h"
 #include "slog/slog.h"
-
 
 int create_dir(char* dir)
 {
@@ -22,17 +23,30 @@ int create_dir(char* dir)
     }
 }
 
-char* create_user_dir(char* dirtype)
+char* create_user_dir(const char* dirtype)
 {
-    char* home_dir_str = gethome();
-    char* config_dir_str = ( char* ) malloc(1 + strlen(home_dir_str) + strlen(dirtype) + strlen("gilles/"));
-    strcpy(config_dir_str, home_dir_str);
-    strcat(config_dir_str, dirtype);
-    strcat(config_dir_str, "gilles/");
+    char* config_dir_str = ( char* ) malloc(1 + strlen(dirtype) + strlen("/gilles"));
+    strcpy(config_dir_str, dirtype);
+    strcat(config_dir_str, "/gilles");
 
     create_dir(config_dir_str);
     free(config_dir_str);
 }
+
+char* get_config_file(const char* confpath, xdgHandle* xdg)
+{
+    if(strcmp(confpath, "") != 0)
+    {
+        fprintf(stderr, "no config path specified");
+        return strdup(confpath);
+    }
+
+    const char* relpath = "gilles/gilles.config";
+    const char* confpath1 = xdgConfigFind(relpath, xdg);
+    slogi("path is %s", confpath1);
+    return strdup(confpath1);
+}
+
 
 
 int main(int argc, char** argv)
@@ -40,7 +54,6 @@ int main(int argc, char** argv)
 
     Parameters* p = malloc(sizeof(Parameters));
     GillesSettings* gs = malloc(sizeof(GillesSettings));;
-
     ConfigError ppe = getParameters(argc, argv, p);
     if (ppe == E_SUCCESS_AND_EXIT)
     {
@@ -52,13 +65,9 @@ int main(int argc, char** argv)
     char* home_dir_str = gethome();
     create_user_dir("/.config/");
     create_user_dir("/.cache/");
-    char* config_file_str = ( char* ) malloc(1 + strlen(home_dir_str) + strlen("/.config/") + strlen("gilles/gilles.config"));
     char* cache_dir_str = ( char* ) malloc(1 + strlen(home_dir_str) + strlen("/.cache/gilles/"));
-    strcpy(config_file_str, home_dir_str);
-    strcat(config_file_str, "/.config/");
     strcpy(cache_dir_str, home_dir_str);
     strcat(cache_dir_str, "/.cache/gilles/");
-    strcat(config_file_str, "gilles/gilles.config");
 
     slog_config_t slgCfg;
     slog_config_get(&slgCfg);
@@ -82,39 +91,32 @@ int main(int argc, char** argv)
         slog_disable(SLOG_DEBUG);
     }
 
-    pthread_t ui_thread;
-    pthread_t mqtt_thread;
+    xdgHandle xdg;
+    if(!xdgInitHandle(&xdg))
+    {
+        slogf("Function xdgInitHandle() failed, is $HOME unset?");
+    }
+    char* config_file_str = get_config_file("/home/paul/.config/gilles/gilles.config", &xdg);
 
-    if (pthread_create(&ui_thread, NULL, &looper, p) != 0)
-    {
-        printf("Uh-oh!\n");
-        return -1;
-    }
-    if (p->mqtt == true)
-    {
-        if (pthread_create(&mqtt_thread, NULL, &b4madmqtt, p) != 0)
-        {
-            printf("Uh-oh!\n");
-            return -1;
-        }
-    }
-
-    pthread_join(ui_thread, NULL);
-    p->program_state = -1;
-    if (p->mqtt == true)
-    {
-        pthread_join(mqtt_thread, NULL);
-    }
+    loadconfig(config_file_str, p);
+    //slogi("mysql user is %s", p->mysql_user);
 
     free(config_file_str);
     free(cache_dir_str);
+    xdgWipeHandle(&xdg);
 
+    mainloop(p);
+    //free(config_file_str);
+    //free(cache_dir_str);
+    //free(simmap);
+    //free(simdata);
 
 
 configcleanup:
     //config_destroy(&cfg);
 
 cleanup_final:
+    freeparams(p);
     free(gs);
     free(p);
     exit(0);
