@@ -21,7 +21,8 @@
 #include "../simulatorapi/simapi/simapi/simmapper.h"
 #include "../slog/slog.h"
 
-#define DEFAULT_UPDATE_RATE      100
+#define DEFAULT_UPDATE_RATE      60
+#define DATA_UPDATE_RATE         4
 
 #define ADDRESS     "tcp://localhost:1883"
 #define CLIENTID    "gilles"
@@ -811,6 +812,85 @@ int addevent(struct _h_connection* conn, int track_config)
     return getLastInsertID(conn);
 }
 
+int addsession(struct _h_connection* conn, int eventid, int eventtype, int airtemp, int tracktemp)
+{
+
+// session_id | event_id | event_type | track_time | session_name
+// | start_time | duration_min | elapsed_ms | laps | weather |
+// air_temp | road_temp | start_grip | current_grip | is_finished
+// | finish_time | last_activity | http_port
+    json_t *root = json_object();
+    json_t *json_arr = json_array();
+
+    json_object_set_new( root, "table", json_string("sessions") );
+    json_object_set_new( root, "values", json_arr );
+
+    json_t* values = json_object();
+    json_object_set_new(values, "event_id", json_integer(eventid));
+    json_object_set_new(values, "event_type", json_integer(1));
+    json_object_set_new(values, "duration_min", json_integer(60));
+    json_object_set_new(values, "session_name", json_string("default"));
+    json_object_set_new(values, "last_activity", json_string("2023-06-27"));
+    json_object_set_new(values, "air_temp", json_integer(airtemp));
+    json_object_set_new(values, "road_temp", json_integer(tracktemp));
+    json_object_set_new(values, "weather", json_string("Windy"));
+    json_array_append(json_arr, values);
+    int res = h_insert(conn, root, NULL);
+    slogt("session insert response: %i", res);
+    json_decref(root);
+    json_decref(values);
+    return getLastInsertID(conn);
+}
+
+int addstint(struct _h_connection* conn, int sessionid, int driverid, int carid)
+{
+
+// stints
+// session_stint_id | driver_id | team_member_id | session_id | car_id | game_car_id | laps | valid_laps | best_lap_id | is_finished | started_at | finished_at
+    json_t *root = json_object();
+    json_t *json_arr = json_array();
+
+    json_object_set_new( root, "table", json_string("session_stints") );
+    json_object_set_new( root, "values", json_arr );
+
+    json_t* values = json_object();
+
+    json_object_set_new(values, "driver_id", json_integer(driverid));
+    json_object_set_new(values, "session_id", json_integer(sessionid));
+    json_object_set_new(values, "car_id", json_integer(carid));
+    json_object_set_new(values, "game_car_id", json_integer(carid));
+    json_object_set_new(values, "started_at", json_string("2023-06-25") );
+    json_array_append(json_arr, values);
+    int res = h_insert(conn, root, NULL);
+    slogt("stint insert response: %i", res);
+    json_decref(root);
+    json_decref(values);
+    return getLastInsertID(conn);
+}
+
+int addstintlap(struct _h_connection* conn, int stintid)
+{
+
+// stint laps
+// stint_lap_id | stint_id | sector_1 | sector_2 | sector_3 | grip | tyre | time | cuts | crashes | car_crashes | max_speed | avg_speed | finished_at
+    json_t *root = json_object();
+    json_t *json_arr = json_array();
+
+    json_object_set_new( root, "table", json_string("stint_laps") );
+    json_object_set_new( root, "values", json_arr );
+
+    json_t* values = json_object();
+
+    json_object_set_new(values, "stint_id", json_integer(stintid));
+    json_object_set_new(values, "tyre", json_string("Vintage") );
+    json_array_append(json_arr, values);
+    int res = h_insert(conn, root, NULL);
+    slogt("stint lap insert response: %i", res);
+    json_decref(root);
+    json_decref(values);
+    return getLastInsertID(conn);
+}
+
 int addcar(struct _h_connection* conn, int carid, const char* carname)
 {
 
@@ -968,6 +1048,7 @@ void* simviewmysql(void* thargs)
     char* connectionstring = "host=zorak.brak dbname=gilles user=test password=thisisatest";
     conn = h_connect_pgsql(connectionstring);
 
+
     int trackconfig = gettrack(conn, simdata->track);
     trackconfig = addtrackconfig(conn, trackconfig, simdata->track, simdata->trackdistancearound);
     int eventid = addevent(conn, trackconfig);
@@ -976,6 +1057,7 @@ void* simviewmysql(void* thargs)
     int carid = getcar(conn, simdata->car);
     carid = addcar(conn, carid, simdata->car);
 
+    // ?? close last session
 // sessions
 // session_id | event_id | event_type | track_time | session_name | start_time | duration_min | elapsed_ms | laps | weather | air_temp | road_temp | start_grip | current_grip | is_finished | finish_time | last_activity | http_port
 
@@ -988,6 +1070,62 @@ void* simviewmysql(void* thargs)
 // telemetry
 // lap_id | telemetry
 
+    int pitstatus = 0;
+    int sessionstatus = 0;
+    int lastpitstatus = -1;
+    int lastsessionstatus = 0;
+    int lap = 0;
+    int lastlap = 0;
+
+    int stintid = 0;
+    int stintlapid = 0;
+    int sessionid = 0;
+    sessionid = addsession(conn, eventid, simdata->session, simdata->airtemp, simdata->tracktemp);
+    stintid = addstint(conn, sessionid, driverid, carid);
+    stintlapid = addstintlap(conn, stintid);
+    sessionstatus = simdata->session;
+    lastsessionstatus = sessionstatus;
+    lap = simdata->lap;
+    double update_rate = DATA_UPDATE_RATE;
+    struct pollfd mypoll = { STDIN_FILENO, POLLIN|POLLPRI };
+    int go = true;
+    char lastsimstatus = false;
+    while (go == true && p->program_state >= 0)
+    {
+
+        slogt("tick");
+        pitstatus = 0;
+        sessionstatus = simdata->session;
+        lap = simdata->lap;
+        if (sessionstatus != lastsessionstatus)
+        {
+            sessionid = addsession(conn, eventid, simdata->session, simdata->airtemp, simdata->tracktemp);
+            pitstatus = 1;
+        }
+        if (simdata->inpit == true)
+        {
+            pitstatus = 1;
+        }
+        if (pitstatus = 0 && pitstatus != lastpitstatus)
+        {
+            // close last stint
+            stintid = addstint(conn, sessionid, driverid, carid);
+        }
+        if (lap != lastlap)
+        {
+            slogt("New lap detected");
+            // close last stint lap and telemetry lap
+            stintlapid = addstintlap(conn, stintid);
+        }
+        lastpitstatus = pitstatus;
+        lastsessionstatus = sessionstatus;
+        lastlap = lap;
+        if( poll(&mypoll, 1, 1000.0/update_rate) )
+        {
+
+        }
+
+    }
 
 
     h_close_db(conn);
