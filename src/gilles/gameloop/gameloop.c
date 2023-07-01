@@ -22,7 +22,9 @@
 #include "../slog/slog.h"
 
 #define DEFAULT_UPDATE_RATE      60
-#define DATA_UPDATE_RATE         4
+#define DATA_UPDATE_RATE         32
+#define TRACK_SAMPLE_RATE        4
+#define SIM_CHECK_RATE           1
 
 #define ADDRESS     "tcp://localhost:1883"
 #define CLIENTID    "gilles"
@@ -155,7 +157,7 @@ int mainloop(Parameters* p)
     p->simmap = simmap;
     fprintf(stdout, "Searching for sim data... Press q to quit...\n");
 
-    double update_rate = 1;
+    double update_rate = SIM_CHECK_RATE;
     int go = true;
     char lastsimstatus = false;
     while (go == true)
@@ -172,7 +174,8 @@ int mainloop(Parameters* p)
             {
                 p->sim = SIMULATOR_ASSETTO_CORSA;
                 int error = siminit(simdata, simmap, 1);
-                if (error == 0)
+                simdatamap(simdata, simmap, 1);
+                if (error == 0 && simdata->simstatus > 1)
                 {
                     slogi("found Assetto Corsa, starting application...");
                     p->simon = true;
@@ -278,7 +281,7 @@ void* clilooper(void* thargs)
     double update_rate = DEFAULT_UPDATE_RATE;
     int go = true;
     char lastsimstatus = false;
-    while (go == true)
+    while (go == true && simdata->simstatus > 1)
     {
         simdatamap(simdata, simmap, p->sim);
 
@@ -292,6 +295,10 @@ void* clilooper(void* thargs)
             if(ch == 'c')
             {
                 slogi("speed: %i gear: %i", simdata->velocity, simdata->gear);
+            }
+            if(ch == 's')
+            {
+                slogi("status: %i", simdata->simstatus);
             }
         }
     }
@@ -506,7 +513,7 @@ void* looper(void* thargs)
             sprintf(tracktemp, "%.0f\n", simdata->tracktemp);
             wattrset(win2, COLOR_PAIR(2));
             waddstr(win2, tracktemp);
-            
+
             char numlaps[14];
             wbkgd(win2,COLOR_PAIR(1));
             wattrset(win2, COLOR_PAIR(1));
@@ -514,7 +521,7 @@ void* looper(void* thargs)
             sprintf(numlaps, "%i\n", simdata->numlaps);
             wattrset(win2, COLOR_PAIR(2));
             waddstr(win2, numlaps);
-            
+
             char timeleft[14];
             int hours = simdata->timeleft/6000;
             int minutes = simdata->timeleft/60 - (hours*6000);
@@ -850,7 +857,7 @@ int addstint(struct _h_connection* conn, int sessionid, int driverid, int carid)
     json_t *root = json_object();
     json_t *json_arr = json_array();
 
-    json_object_set_new( root, "table", json_string("session_stints") );
+    json_object_set_new( root, "table", json_string("stints") );
     json_object_set_new( root, "values", json_arr );
 
     json_t* values = json_object();
@@ -876,7 +883,7 @@ int addstintlap(struct _h_connection* conn, int stintid)
     json_t *root = json_object();
     json_t *json_arr = json_array();
 
-    json_object_set_new( root, "table", json_string("stint_laps") );
+    json_object_set_new( root, "table", json_string("laps") );
     json_object_set_new( root, "values", json_arr );
 
     json_t* values = json_object();
@@ -918,8 +925,79 @@ int addcar(struct _h_connection* conn, int carid, const char* carname)
 
     carid = getLastInsertID(conn);
     return carid;
-
 }
+
+int addtelemetry(struct _h_connection* conn, int points, int stintid)
+{
+
+    json_t *root = json_object();
+    json_t *json_arr = json_array();
+
+    json_object_set_new( root, "table", json_string("telemetry") );
+    json_object_set_new( root, "values", json_arr );
+
+    json_t* values = json_object();
+    json_object_set_new(values, "lap_id", json_integer(stintid));
+    json_object_set_new(values, "points", json_integer(points));
+    json_array_append(json_arr, values);
+    int res = h_insert(conn, root, NULL);
+    json_decref(root);
+    json_decref(values);
+
+    int telemid = getLastInsertID(conn);
+    return telemid;
+}
+
+int updatetelemetry(struct _h_connection* conn, int telemid, int size, const char* column, void* data)
+{
+
+    //char *pp = malloc((size*2)+1);
+    char output[(size * 2) + 1];
+    char *ppp = &output[0];
+    unsigned char *p = data;
+    int i;
+    for (i=0; i<size; i++) {
+        ppp += sprintf(ppp, "%02hhX", p[i]);
+        //snprintf(pp, (size*2)+1, "%s%02hhX", pp, p[i]);
+    }
+
+    //char output2[((size*2)+3)];
+    ////snprintf(output2, (size*2)+18, "%s%s%s", "decode('", output, "', 'hex')");
+    //snprintf(output2, (size*2)+18, "%s %s%s", "decode('", output, "', 'hex')");
+
+    //slogt("heres a string %s", output2);
+
+    //json_t* j_query = json_pack("{sss[{siso}]}",
+    //                   "table",
+    //                   "lap_telemetry",
+    //                   "values",
+    //                     "lap_id",
+    //                     lapid,
+    //                     "steer",
+    //                     json_pack("s", "decode('deadbeef', 'hex')"));
+    char* query = malloc((sizeof(char)*71)+(sizeof(column))+(size*2)+1);
+    sprintf(query, "UPDATE telemetry SET %s = decode('%s', 'hex') WHERE telemetry_id = %i", column, &output, telemid);
+    int res1 = h_query_update(conn, query);
+    //int res1 = h_insert(conn, j_query, NULL);
+    slogt("got res %i", res1);
+    free(query);
+    //json_t *root = json_object();
+    //json_t *json_arr = json_array();
+
+    //json_object_set_new( root, "table", json_string("lap_telemetry") );
+    //json_object_set_new( root, "values", json_arr );
+
+    //json_t* values = json_object();
+    //json_object_set_new(values, "lap_id", json_integer(lapid));
+    //json_object_set_new(values, "steer", json_string(output2));
+    //json_array_append(json_arr, values);
+    //int res = h_insert(conn, root, NULL);
+    //json_decref(root);
+    //json_decref(values);
+
+    return res1;
+}
+
 
 int gettrack(struct _h_connection* conn, const char* trackname)
 {
@@ -1035,6 +1113,22 @@ int getcar(struct _h_connection* conn, const char* carname)
   return car_id;
 }
 
+void print_bytes(void *ptr, int size)
+{
+    char *pp = malloc((size*2)+1);
+    char output[(size * 2) + 1];
+    char *ppp = &output[0];
+    unsigned char *p = ptr;
+    int i;
+    for (i=0; i<size; i++) {
+        slogt("%02hhX", p[i]);
+        ppp += sprintf(ppp, "%02X", p[i]);
+        //snprintf(pp, (size*2)+1, "%s%02hhX", pp, p[i]);
+    }
+    slogt("\n");
+    slogt("bytes %s", output);
+}
+
 
 
 void* simviewmysql(void* thargs)
@@ -1086,14 +1180,37 @@ void* simviewmysql(void* thargs)
     sessionstatus = simdata->session;
     lastsessionstatus = sessionstatus;
     lap = simdata->lap;
+    lastlap = lap;
     double update_rate = DATA_UPDATE_RATE;
     struct pollfd mypoll = { STDIN_FILENO, POLLIN|POLLPRI };
     int go = true;
     char lastsimstatus = false;
+    int tick = 0;
+
+
+    slogt("spline %f", simdata->trackspline);
+    int track_samples = simdata->trackspline / TRACK_SAMPLE_RATE;
+    slogt("track samples %i", track_samples);
+
+
+    int* speeddata = malloc(track_samples * sizeof(simdata->velocity));
+    double* steerdata = malloc(track_samples * sizeof(simdata->steer));
+    double* acceldata = malloc(track_samples * sizeof(simdata->gas));
+    double* brakedata = malloc(track_samples * sizeof(simdata->brake));
+
+
     while (go == true && p->program_state >= 0)
     {
 
-        slogt("tick");
+        slogt("tick %i", tick);
+        slogt("pos %f", simdata->playerspline);
+        int pos = (int) track_samples * simdata->playerspline;
+        slogt("normpos %i", pos);
+        steerdata[pos] = simdata->steer;
+        acceldata[pos] = simdata->gas;
+        speeddata[pos] = simdata->velocity;
+        brakedata[pos] = simdata->brake;
+
         pitstatus = 0;
         sessionstatus = simdata->session;
         lap = simdata->lap;
@@ -1114,16 +1231,24 @@ void* simviewmysql(void* thargs)
         if (lap != lastlap)
         {
             slogt("New lap detected");
-            // close last stint lap and telemetry lap
             stintlapid = addstintlap(conn, stintid);
+            int telemid = addtelemetry(conn, track_samples, stintlapid);
+            int b = updatetelemetry(conn, telemid, track_samples*sizeof(double), "steer", steerdata);
+            b = updatetelemetry(conn, telemid, track_samples*sizeof(double), "accel", acceldata);
+            b = updatetelemetry(conn, telemid, track_samples*sizeof(double), "brake", brakedata);
+            //print_bytes(acceldata, tick*sizeof(double));
+            print_bytes(&acceldata[pos], sizeof(double));
+            slogt("last accel %f on tick %i", acceldata[track_samples], track_samples);
+            slogt("telemetry respone: %i", b);
+            // close last stint lap and telemetry lap
+            tick = 0;
         }
         lastpitstatus = pitstatus;
         lastsessionstatus = sessionstatus;
         lastlap = lap;
-        if( poll(&mypoll, 1, 1000.0/update_rate) )
-        {
+        tick++;
 
-        }
+        poll(&mypoll, 1, 1000 / DATA_UPDATE_RATE);
 
     }
 
