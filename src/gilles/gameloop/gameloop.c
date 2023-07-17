@@ -166,25 +166,10 @@ int mainloop(Parameters* p)
 
 
 
+        getSim(simdata, simmap, &p->simon, &p->sim);
 
-        // check for running sims
-        if (file_exists("/dev/shm/acpmf_physics"))
-        {
-            if (file_exists("/dev/shm/acpmf_static"))
-            {
-                p->sim = SIMULATOR_ASSETTO_CORSA;
-                int error = siminit(simdata, simmap, 1);
-                simdatamap(simdata, simmap, 1);
-                if (error == 0 && simdata->simstatus > 1)
-                {
-                    slogi("found Assetto Corsa, starting application...");
-                    p->simon = true;
-                }
-            }
-        }
 
-        if (p->simon == true)
-        {
+        if (p->simon == true)        {
             if (p->cli == true)
             {
                 if (pthread_create(&ui_thread, NULL, &clilooper, p) != 0)
@@ -824,8 +809,7 @@ int addsession(struct _h_connection* conn, int eventid, int eventtype, int airte
 
 // session_id | event_id | event_type | track_time | session_name
 // | start_time | duration_min | elapsed_ms | laps | weather |
-// air_temp | road_temp | start_grip | current_grip | is_finished
-// | finish_time | last_activity | http_port
+// air_temp | road_temp | start_grip |
     json_t *root = json_object();
     json_t *json_arr = json_array();
 
@@ -836,11 +820,12 @@ int addsession(struct _h_connection* conn, int eventid, int eventtype, int airte
     json_object_set_new(values, "event_id", json_integer(eventid));
     json_object_set_new(values, "event_type", json_integer(1));
     json_object_set_new(values, "duration_min", json_integer(60));
+    json_object_set_new(values, "start_time", json_string("NOW()"));
     json_object_set_new(values, "session_name", json_string("default"));
-    json_object_set_new(values, "last_activity", json_string("2023-06-27"));
     json_object_set_new(values, "air_temp", json_integer(airtemp));
     json_object_set_new(values, "road_temp", json_integer(tracktemp));
     json_object_set_new(values, "weather", json_string("Windy"));
+    json_object_set_new(values, "http_port", json_integer(0));
     json_array_append(json_arr, values);
     int res = h_insert(conn, root, NULL);
     slogt("session insert response: %i", res);
@@ -852,8 +837,7 @@ int addsession(struct _h_connection* conn, int eventid, int eventtype, int airte
 int addstint(struct _h_connection* conn, int sessionid, int driverid, int carid)
 {
 
-// stints
-// session_stint_id | driver_id | team_member_id | session_id | car_id | game_car_id | laps | valid_laps | best_lap_id | is_finished | started_at | finished_at
+
     json_t *root = json_object();
     json_t *json_arr = json_array();
 
@@ -863,10 +847,16 @@ int addstint(struct _h_connection* conn, int sessionid, int driverid, int carid)
     json_t* values = json_object();
 
     json_object_set_new(values, "driver_id", json_integer(driverid));
+    //team_member_id
     json_object_set_new(values, "session_id", json_integer(sessionid));
     json_object_set_new(values, "car_id", json_integer(carid));
     json_object_set_new(values, "game_car_id", json_integer(carid));
-    json_object_set_new(values, "started_at", json_string("2023-06-25") );
+    json_object_set_new(values, "laps", json_integer(0));
+    json_object_set_new(values, "valid_laps", json_integer(0));
+    // best_lap_id
+    json_object_set_new(values, "is_finished", json_integer(0));
+
+    json_object_set_new(values, "started_at", json_string("NOW()") );
     json_array_append(json_arr, values);
     int res = h_insert(conn, root, NULL);
     slogt("stint insert response: %i", res);
@@ -875,11 +865,65 @@ int addstint(struct _h_connection* conn, int sessionid, int driverid, int carid)
     return getLastInsertID(conn);
 }
 
+int closesession(struct _h_connection* conn, int sessionid)
+{
+
+// best_lap_id
+
+// session_id | event_id | event_type | track_time | session_name
+// | start_time | duration_min | elapsed_ms | laps | weather |
+// air_temp | road_temp | start_grip | end_grip | is_finished
+
+    char* query = malloc((sizeof(char)*71));
+    sprintf(query, "UPDATE sessions SET is_finished=1, finished_at=NOW() WHERE sessionid=%i", "sessions", sessionid);
+
+    int res1 = h_query_update(conn, query);
+    free(query);
+
+    return res1;
+}
+
+
+int closestint(struct _h_connection* conn, int stintid, int stintlaps, int validstintlaps)
+{
+
+// best_lap_id
+
+    char* query = malloc((sizeof(char)*71));
+    sprintf(query, "UPDATE stints SET %s = %i, %s = %i, is_finished=1, finished_at=NOW() WHERE stintid=%i", "laps", stintlaps, "valid_laps", validstintlaps, stintid);
+
+    int res1 = h_query_update(conn, query);
+    free(query);
+
+    return res1;
+}
+
+int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, int sector3, int cuts, int crashes, int maxspeed, int avgspeed,
+    int fbraketemp, int rbraketemp, int ftyrewear, int rtyrewear, int ftyretemp, int rtyretemp, int ftyrepress, int rtyrepress)
+{
+
+// stint laps
+// lap_id | stint_id | sector_1 | sector_2 | sector_3 | grip | tyre | time | cuts | crashes
+// max_speed | avg_speed | finished_at
+
+    char* query = malloc((sizeof(char)*171));
+    sprintf(query, "UPDATE laps SET %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, finished_at=NOW() WHERE lapid=%i",
+        "laps", "front_tyre_temp", ftyretemp, "rear_tyre_temp", rtyretemp, "front_tyre_wear", ftyrewear, "rear_tyre_wear", rtyrewear,
+        "front_tyre_press", ftyrepress, "rear_tyre_press", rtyrepress, "front_brake_temp", fbraketemp, "rear_brake_temp", rbraketemp, lapid);
+
+    int res1 = h_query_update(conn, query);
+    free(query);
+
+    return res1;
+}
+
+
 int addstintlap(struct _h_connection* conn, int stintid)
 {
 
 // stint laps
-// stint_lap_id | stint_id | sector_1 | sector_2 | sector_3 | grip | tyre | time | cuts | crashes | car_crashes | max_speed | avg_speed | finished_at
+// stint_lap_id | stint_id | sector_1 | sector_2 | sector_3 | grip | tyre | time | cuts | crashes
+// max_speed | avg_speed | finished_at
     json_t *root = json_object();
     json_t *json_arr = json_array();
 
@@ -961,39 +1005,12 @@ int updatetelemetry(struct _h_connection* conn, int telemid, int size, const cha
         //snprintf(pp, (size*2)+1, "%s%02hhX", pp, p[i]);
     }
 
-    //char output2[((size*2)+3)];
-    ////snprintf(output2, (size*2)+18, "%s%s%s", "decode('", output, "', 'hex')");
-    //snprintf(output2, (size*2)+18, "%s %s%s", "decode('", output, "', 'hex')");
-
-    //slogt("heres a string %s", output2);
-
-    //json_t* j_query = json_pack("{sss[{siso}]}",
-    //                   "table",
-    //                   "lap_telemetry",
-    //                   "values",
-    //                     "lap_id",
-    //                     lapid,
-    //                     "steer",
-    //                     json_pack("s", "decode('deadbeef', 'hex')"));
     char* query = malloc((sizeof(char)*71)+(sizeof(column))+(size*2)+1);
     sprintf(query, "UPDATE telemetry SET %s = decode('%s', 'hex') WHERE telemetry_id = %i", column, &output, telemid);
     int res1 = h_query_update(conn, query);
     //int res1 = h_insert(conn, j_query, NULL);
     slogt("got res %i", res1);
     free(query);
-    //json_t *root = json_object();
-    //json_t *json_arr = json_array();
-
-    //json_object_set_new( root, "table", json_string("lap_telemetry") );
-    //json_object_set_new( root, "values", json_arr );
-
-    //json_t* values = json_object();
-    //json_object_set_new(values, "lap_id", json_integer(lapid));
-    //json_object_set_new(values, "steer", json_string(output2));
-    //json_array_append(json_arr, values);
-    //int res = h_insert(conn, root, NULL);
-    //json_decref(root);
-    //json_decref(values);
 
     return res1;
 }
@@ -1152,17 +1169,6 @@ void* simviewmysql(void* thargs)
     carid = addcar(conn, carid, simdata->car);
 
     // ?? close last session
-// sessions
-// session_id | event_id | event_type | track_time | session_name | start_time | duration_min | elapsed_ms | laps | weather | air_temp | road_temp | start_grip | current_grip | is_finished | finish_time | last_activity | http_port
-
-// stints
-// session_stint_id | driver_id | team_member_id | session_id | car_id | game_car_id | laps | valid_laps | best_lap_id | is_finished | started_at | finished_at
-
-// stint laps
-// stint_lap_id | stint_id | sector_1 | sector_2 | sector_3 | grip | tyre | time | cuts | crashes | car_crashes | max_speed | avg_speed | finished_at
-
-// telemetry
-// lap_id | telemetry
 
     int pitstatus = 0;
     int sessionstatus = 0;
@@ -1188,16 +1194,32 @@ void* simviewmysql(void* thargs)
     int tick = 0;
 
 
-    slogt("spline %f", simdata->trackspline);
     int track_samples = simdata->trackspline / TRACK_SAMPLE_RATE;
     slogt("track samples %i", track_samples);
 
+    int stintlaps = 0;
+    int validstintlaps = 0;
+    bool validind = true;
 
     int* speeddata = malloc(track_samples * sizeof(simdata->velocity));
+    int* rpmdata = malloc(track_samples * sizeof(simdata->rpms));
+    int* geardata = malloc(track_samples * sizeof(simdata->gear));
     double* steerdata = malloc(track_samples * sizeof(simdata->steer));
     double* acceldata = malloc(track_samples * sizeof(simdata->gas));
     double* brakedata = malloc(track_samples * sizeof(simdata->brake));
 
+    //double* tyretemp0 = malloc(track_samples * sizeof(simdata->tyretemp[0]));
+    //double* tyretemp1 = malloc(track_samples * sizeof(simdata->tyretemp[0]));
+    //double* tyretemp2 = malloc(track_samples * sizeof(simdata->tyretemp[0]));
+    //double* tyretemp3 = malloc(track_samples * sizeof(simdata->tyretemp[0]));
+    //double* tyrepressure0 = malloc(track_samples * sizeof(simdata->tyrepressure[0]));
+    //double* tyrepressure1 = malloc(track_samples * sizeof(simdata->tyrepressure[0]));
+    //double* tyrepressure2 = malloc(track_samples * sizeof(simdata->tyrepressure[0]));
+    //double* tyrepressure3 = malloc(track_samples * sizeof(simdata->tyrepressure[0]));
+    //double* braketemp0 = malloc(track_samples * sizeof(simdata->braketemp[0]));
+    //double* braketemp1 = malloc(track_samples * sizeof(simdata->braketemp[0]));
+    //double* braketemp2 = malloc(track_samples * sizeof(simdata->braketemp[0]));
+    //double* braketemp3 = malloc(track_samples * sizeof(simdata->braketemp[0]));
 
     while (go == true && p->program_state >= 0)
     {
@@ -1208,9 +1230,31 @@ void* simviewmysql(void* thargs)
         slogt("normpos %i", pos);
         steerdata[pos] = simdata->steer;
         acceldata[pos] = simdata->gas;
-        speeddata[pos] = simdata->velocity;
         brakedata[pos] = simdata->brake;
+        speeddata[pos] = simdata->velocity;
+        rpmdata[pos] = simdata->rpms;
+        geardata[pos] = simdata->gear;
 
+
+        //tyretemp0[pos] = simdata->tyretemp[0];
+        //tyretemp1[pos] = simdata->tyretemp[1];
+        //tyretemp2[pos] = simdata->tyretemp[2];
+        //tyretemp3[pos] = simdata->tyretemp[3];
+        //tyrepressure0[pos] = simdata->tyrepressure[0];
+        //tyrepressure1[pos] = simdata->tyrepressure[1];
+        //tyrepressure2[pos] = simdata->tyrepressure[2];
+        //tyrepressure3[pos] = simdata->tyrepressure[3];
+        //braketemp0[pos] = simdata->braketemp[0];
+        //braketemp1[pos] = simdata->braketemp[1];
+        //braketemp2[pos] = simdata->braketemp[2];
+        //braketemp3[pos] = simdata->braketemp[3];
+
+
+
+        if (!simdata->lapisvalid)
+        {
+            validind = false;
+        }
         pitstatus = 0;
         sessionstatus = simdata->session;
         lap = simdata->lap;
@@ -1218,6 +1262,7 @@ void* simviewmysql(void* thargs)
         {
             sessionid = addsession(conn, eventid, simdata->session, simdata->airtemp, simdata->tracktemp);
             pitstatus = 1;
+            stintlaps = 0;
         }
         if (simdata->inpit == true)
         {
@@ -1226,21 +1271,38 @@ void* simviewmysql(void* thargs)
         if (pitstatus = 0 && pitstatus != lastpitstatus)
         {
             // close last stint
+            closestint(conn, stintid, stintlaps, validstintlaps);
             stintid = addstint(conn, sessionid, driverid, carid);
+            stintlaps = 0;
         }
         if (lap != lastlap)
         {
+            stintlaps++;
+            if (validind == true)
+            {
+                validstintlaps++;
+            }
+
+            double fbraketemp = (simdata->braketemp[0] + simdata->braketemp[1])/2;
+            double rbraketemp = (simdata->braketemp[2] + simdata->braketemp[3])/2;
+            double ftyrewear = (simdata->tyrewear[0] + simdata->tyrewear[1])/2;
+            double rtyrewear = (simdata->tyrewear[2] + simdata->tyrewear[3])/2;
+            double ftyretemp = (simdata->tyretemp[0] + simdata->tyretemp[1])/2;
+            double rtyretemp = (simdata->tyretemp[2] + simdata->tyretemp[3])/2;
+            double ftyrepress = (simdata->tyrepressure[0] + simdata->tyrepressure[1])/2;
+            double rtyrepress = (simdata->tyrepressure[2] + simdata->tyrepressure[3])/2;
+
+            closelap(conn, stintlapid, 0, 0, 0, 0, 0, 0, 0, fbraketemp, rbraketemp, ftyrewear, rtyrewear, ftyretemp, rtyretemp, ftyrepress, rtyrepress);
             slogt("New lap detected");
             stintlapid = addstintlap(conn, stintid);
             int telemid = addtelemetry(conn, track_samples, stintlapid);
             int b = updatetelemetry(conn, telemid, track_samples*sizeof(double), "steer", steerdata);
             b = updatetelemetry(conn, telemid, track_samples*sizeof(double), "accel", acceldata);
             b = updatetelemetry(conn, telemid, track_samples*sizeof(double), "brake", brakedata);
-            //print_bytes(acceldata, tick*sizeof(double));
-            print_bytes(&acceldata[pos], sizeof(double));
-            slogt("last accel %f on tick %i", acceldata[track_samples], track_samples);
-            slogt("telemetry respone: %i", b);
-            // close last stint lap and telemetry lap
+            b = updatetelemetry(conn, telemid, track_samples*sizeof(int), "rpms", rpmdata);
+            b = updatetelemetry(conn, telemid, track_samples*sizeof(int), "gear", geardata);
+            b = updatetelemetry(conn, telemid, track_samples*sizeof(int), "speed", speeddata);
+
             tick = 0;
         }
         lastpitstatus = pitstatus;

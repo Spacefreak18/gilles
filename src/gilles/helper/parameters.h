@@ -33,6 +33,7 @@ Parameters;
 typedef enum
 {
     A_PLAY          = 0,
+    A_BROWSE        = 0
 }
 ProgramAction;
 
