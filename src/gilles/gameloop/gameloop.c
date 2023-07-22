@@ -169,7 +169,8 @@ int mainloop(Parameters* p)
         getSim(simdata, simmap, &p->simon, &p->sim);
 
 
-        if (p->simon == true)        {
+        if (p->simon == true) {
+            p->program_state = 1;
             if (p->cli == true)
             {
                 if (pthread_create(&ui_thread, NULL, &clilooper, p) != 0)
@@ -868,18 +869,22 @@ int addstint(struct _h_connection* conn, int sessionid, int driverid, int carid)
 int closesession(struct _h_connection* conn, int sessionid)
 {
 
+    slogt("closing previous session ", sessionid);
 // best_lap_id
 
 // session_id | event_id | event_type | track_time | session_name
 // | start_time | duration_min | elapsed_ms | laps | weather |
 // air_temp | road_temp | start_grip | end_grip | is_finished
 
-    char* query = malloc((sizeof(char)*71));
-    sprintf(query, "UPDATE sessions SET is_finished=1, finished_at=NOW() WHERE sessionid=%i", "sessions", sessionid);
+    char* query = malloc((sizeof(char)*100));
+    sprintf(query, "UPDATE %s SET is_finished=1, finished_at=NOW() WHERE session_id=%i",
+            "sessions", sessionid);
 
     int res1 = h_query_update(conn, query);
+    slogt("running query %s", query);
     free(query);
 
+    slogt("closed previous session");
     return res1;
 }
 
@@ -888,32 +893,42 @@ int closestint(struct _h_connection* conn, int stintid, int stintlaps, int valid
 {
 
 // best_lap_id
+    slogt("closing previous stint ", stintid);
 
-    char* query = malloc((sizeof(char)*71));
-    sprintf(query, "UPDATE stints SET %s = %i, %s = %i, is_finished=1, finished_at=NOW() WHERE stintid=%i", "laps", stintlaps, "valid_laps", validstintlaps, stintid);
+    char* query = malloc((sizeof(char)*146));
+    sprintf(query, "UPDATE %s SET %s = %i, %s = %i, is_finished=1, finished_at=NOW() WHERE stint_id=%i",
+            "stints", "laps", stintlaps, "valid_laps", validstintlaps, stintid);
 
     int res1 = h_query_update(conn, query);
+    slogt("running query %s", query);
     free(query);
 
+    slogt("closed previous stint");
     return res1;
 }
 
 int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, int sector3, int cuts, int crashes, int maxspeed, int avgspeed,
-    int fbraketemp, int rbraketemp, int ftyrewear, int rtyrewear, int ftyretemp, int rtyretemp, int ftyrepress, int rtyrepress)
+    double fbraketemp, double rbraketemp, double ftyrewear, double rtyrewear, double ftyretemp, double rtyretemp, double ftyrepress, double rtyrepress)
 {
 
 // stint laps
 // lap_id | stint_id | sector_1 | sector_2 | sector_3 | grip | tyre | time | cuts | crashes
 // max_speed | avg_speed | finished_at
 
-    char* query = malloc((sizeof(char)*171));
-    sprintf(query, "UPDATE laps SET %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, finished_at=NOW() WHERE lapid=%i",
-        "laps", "front_tyre_temp", ftyretemp, "rear_tyre_temp", rtyretemp, "front_tyre_wear", ftyrewear, "rear_tyre_wear", rtyrewear,
-        "front_tyre_press", ftyrepress, "rear_tyre_press", rtyrepress, "front_brake_temp", fbraketemp, "rear_brake_temp", rbraketemp, lapid);
+    slogt("closing previous lap ", lapid);
+
+    char* query = malloc((sizeof(char)*360));
+    sprintf(query, "UPDATE %s SET %s=%i, %s=%i, %s=%i, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, finished_at=NOW() WHERE lap_id=%i;",
+        "laps", "sector_1", sector1, "sector_2", sector2, "sector_3", sector3, "front_tyre_temp", ftyretemp, "rear_tyre_temp", rtyretemp,
+        "front_tyre_wear", ftyrewear, "rear_tyre_wear", rtyrewear, "front_tyre_press", ftyrepress, "rear_tyre_press", rtyrepress,
+        "front_brake_temp", fbraketemp, "rear_brake_temp", rbraketemp, lapid);
+
 
     int res1 = h_query_update(conn, query);
+    slogt("running query %s", query);
     free(query);
 
+    slogt("closed previous lap");
     return res1;
 }
 
@@ -1170,12 +1185,14 @@ void* simviewmysql(void* thargs)
 
     // ?? close last session
 
-    int pitstatus = 0;
+    int pitstatus = simdata->inpit;
     int sessionstatus = 0;
-    int lastpitstatus = -1;
+    int lastpitstatus = pitstatus;
     int lastsessionstatus = 0;
     int lap = 0;
     int lastlap = 0;
+    int sector = 0;
+    int lastsector = 0;
 
     int stintid = 0;
     int stintlapid = 0;
@@ -1220,14 +1237,20 @@ void* simviewmysql(void* thargs)
     //double* braketemp1 = malloc(track_samples * sizeof(simdata->braketemp[0]));
     //double* braketemp2 = malloc(track_samples * sizeof(simdata->braketemp[0]));
     //double* braketemp3 = malloc(track_samples * sizeof(simdata->braketemp[0]));
+    int sectortimes[4];
 
-    while (go == true && p->program_state >= 0)
+    if (p->program_state < 0)
+    {
+        go = false;
+    }
+
+    while (go == true)
     {
 
         slogt("tick %i", tick);
-        slogt("pos %f", simdata->playerspline);
         int pos = (int) track_samples * simdata->playerspline;
-        slogt("normpos %i", pos);
+        slogt("pos %f normpos %i of samples %i", simdata->playerspline, pos, track_samples);
+
         steerdata[pos] = simdata->steer;
         acceldata[pos] = simdata->gas;
         brakedata[pos] = simdata->brake;
@@ -1251,32 +1274,44 @@ void* simviewmysql(void* thargs)
 
 
 
-        if (!simdata->lapisvalid)
+        sessionstatus = simdata->session;
+        lap = simdata->lap;
+        sector = simdata->sectorindex;
+        if (simdata->lapisvalid == false && validind == true)
         {
             validind = false;
         }
-        pitstatus = 0;
-        sessionstatus = simdata->session;
-        lap = simdata->lap;
+        sectortimes[simdata->sectorindex] = simdata->lastsectorinms;
         if (sessionstatus != lastsessionstatus)
         {
-            sessionid = addsession(conn, eventid, simdata->session, simdata->airtemp, simdata->tracktemp);
-            pitstatus = 1;
+            closestint(conn, stintid, stintlaps, validstintlaps);
+            closesession(conn, sessionid);
+            if (sessionstatus > 1)
+            {
+                sessionid = addsession(conn, eventid, simdata->session, simdata->airtemp, simdata->tracktemp);
+            }
+
+            //pitstatus = 1;
             stintlaps = 0;
+            validstintlaps = 0;
         }
-        if (simdata->inpit == true)
+        pitstatus = simdata->inpit;
+        if (simdata->inpit == true && pitstatus != lastpitstatus)
         {
-            pitstatus = 1;
-        }
-        if (pitstatus = 0 && pitstatus != lastpitstatus)
-        {
+            //pitstatus = 1;
+        //}
+        //if (pitstatus = 0 && pitstatus != lastpitstatus)
+        //{
             // close last stint
+
             closestint(conn, stintid, stintlaps, validstintlaps);
             stintid = addstint(conn, sessionid, driverid, carid);
             stintlaps = 0;
+            validstintlaps = 0;
         }
         if (lap != lastlap)
         {
+            slogt("New lap detected");
             stintlaps++;
             if (validind == true)
             {
@@ -1292,8 +1327,8 @@ void* simviewmysql(void* thargs)
             double ftyrepress = (simdata->tyrepressure[0] + simdata->tyrepressure[1])/2;
             double rtyrepress = (simdata->tyrepressure[2] + simdata->tyrepressure[3])/2;
 
-            closelap(conn, stintlapid, 0, 0, 0, 0, 0, 0, 0, fbraketemp, rbraketemp, ftyrewear, rtyrewear, ftyretemp, rtyretemp, ftyrepress, rtyrepress);
-            slogt("New lap detected");
+            closelap(conn, stintlapid, sectortimes[1], sectortimes[2], simdata->lastsectorinms, 0, 0, 0, 0, fbraketemp, rbraketemp, ftyrewear, rtyrewear, ftyretemp, rtyretemp, ftyrepress, rtyrepress);
+
             stintlapid = addstintlap(conn, stintid);
             int telemid = addtelemetry(conn, track_samples, stintlapid);
             int b = updatetelemetry(conn, telemid, track_samples*sizeof(double), "steer", steerdata);
@@ -1304,14 +1339,25 @@ void* simviewmysql(void* thargs)
             b = updatetelemetry(conn, telemid, track_samples*sizeof(int), "speed", speeddata);
 
             tick = 0;
+            // assume lap is valid until it isn't
+            validind = true;
         }
+
         lastpitstatus = pitstatus;
         lastsessionstatus = sessionstatus;
+        lastsector = sector;
         lastlap = lap;
         tick++;
 
+
         poll(&mypoll, 1, 1000 / DATA_UPDATE_RATE);
 
+        if (p->program_state < 0)
+        {
+            closestint(conn, stintid, stintlaps, validstintlaps);
+            closesession(conn, sessionid);
+            go = false;
+        }
     }
 
 
