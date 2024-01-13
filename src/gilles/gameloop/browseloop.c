@@ -43,6 +43,15 @@ int bwinx, bwiny;
 
 char blanks[100];
 
+void add_line()
+{
+    wprintw(bwin1, "\n");
+    for (int j = 0;  j < bwiny-1;  ++j)
+    {
+        waddch(bwin1, ACS_HLINE);
+    }
+}
+
 void set_spaces(int spaces)
 {
     blanks[spaces] = '\0';
@@ -748,7 +757,7 @@ void* browseloop(Parameters* p, char* datadir)
                     if (i == 0)
                     {
                       wattrset(bwin1, COLOR_PAIR(2));
-                      attron(A_BOLD);
+                      wattron(bwin1, A_BOLD);
                       set_spaces(bwiny/2);
                       waddstr(bwin1, blanks);
 
@@ -785,17 +794,15 @@ void* browseloop(Parameters* p, char* datadir)
                       sprintf(cbestlap, " laps ");
                       waddstr(bwin1, cbestlap);
 
-                      wprintw(bwin1, "\n");
-                      for (int j = 0;  j < bwiny-1;  ++j)
-                        waddch(bwin1, ACS_HLINE);
+                      add_line();
 
                       //mvhline(5, 5, 0, bwiny-1);
                       //mvwhline(bwin1, 20, 20, ACS_HLINE, bwiny+1);
-                      //whline(bwin1, ACS_HLINE, 0);
+                      //whline(bwin1, ACS_HLINE, 100);
 
                       wprintw(bwin1, "\n");
                     
-                      attroff(A_BOLD);
+                      wattroff(bwin1, A_BOLD);
                       wattrset(bwin1, COLOR_PAIR(1));
                     }
                     else
