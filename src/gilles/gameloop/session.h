@@ -10,7 +10,7 @@ typedef struct DBField DBField;
 typedef struct SessionFieldsData SessionFieldsData;
 typedef struct SessionFields SessionFields;
 typedef struct Session Session;
-typedef unsigned char PDBTimeStamp[26];
+typedef unsigned char PDBTimeStamp[27];
 
 struct DBField
 {
@@ -85,6 +85,7 @@ typedef struct LapRowData
     int crashes;
     int max_speed;
     int avg_speed;
+    PDBTimeStamp finished_at;
     double f_tyre_temp;
     double r_tyre_temp;
     double f_tyre_wear;
@@ -93,7 +94,6 @@ typedef struct LapRowData
     double r_tyre_press;
     double f_brake_temp;
     double r_brake_temp;
-    PDBTimeStamp finished_at;
 }
 LapRowData;
 

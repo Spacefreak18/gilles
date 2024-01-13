@@ -1,6 +1,8 @@
 set(gameloop_source_files
   gameloop.c
   gameloop.h
+  browseloop.c
+  browseloop.h
 )
 
 

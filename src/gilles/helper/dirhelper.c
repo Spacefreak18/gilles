@@ -3,22 +3,72 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <dirent.h>
+
 #include <pwd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <time.h>
+
 
 #include <string.h>
 
 
-#include <sys/stat.h>
-#include <sys/types.h>
-#if defined(OS_WIN)
-    #include <windows.h>
-#else
-    #include <dirent.h> // for *Nix directory access
-    #include <unistd.h>
-#endif
+
+#include "../slog/slog.h"
 
 
+#define CONFIG_FILE "gilles/gilles.config"
+
+void create_dir(char* dir)
+{
+    struct stat st = {0};
+    if (stat(dir, &st) == -1)
+    {
+        mkdir(dir, 0700);
+    }
+}
+
+char* create_user_dir(char* home_dir_str, const char* dirtype, const char* programname)
+{
+    // +3 for slashes
+    size_t ss = (4 + strlen(home_dir_str) + strlen(dirtype) + strlen(programname));
+    char* config_dir_str = malloc(ss);
+
+    snprintf (config_dir_str, ss, "%s/%s/%s/", home_dir_str, dirtype, programname);
+
+    slogt("creating dir for %s if necessary", config_dir_str);
+    create_dir(config_dir_str);
+    return config_dir_str;
+}
+
+
+char* get_config_file(const char* confpath, xdgHandle* xdg)
+{
+    if ((confpath != NULL) && (strcmp(confpath, "") != 0))
+    {
+        slogw("Using custom config path %s", confpath);
+        return strdup(confpath);
+    }
+
+    const char* relpath = CONFIG_FILE;
+    char* confpath1 = xdgConfigFind(relpath, xdg);
+    slogi("config path is %s", confpath1);
+    return confpath1;
+}
+
+
+char* get_dir_with_default(const char* dirpath, char* defaultpath)
+{
+    if ((dirpath != NULL) && (strcmp(dirpath, "") != 0))
+    {
+        slogw("Using custom config path %s", dirpath);
+        return strdup(dirpath);
+    }
+
+    return defaultpath;
+}
 
 char* gethome()
 {
@@ -207,47 +257,3 @@ bool does_directory_exist(char* path, char* dirname)
     return answer;
 }
 
-
-
-bool file_exists(const char* file)
-{
-    if (file == NULL) { return false; }
-    #if defined(OS_WIN)
-        #if defined(WIN_API)
-            // if you want the WinAPI, versus CRT
-            if (strnlen(file, MAX_PATH+1) > MAX_PATH) {
-                // ... throw error here or ...
-                return false;
-            }
-            DWORD res = GetFileAttributesA(file);
-            return (res != INVALID_FILE_ATTRIBUTES &&
-                !(res & FILE_ATTRIBUTE_DIRECTORY));
-        #else
-            // Use Win CRT
-            struct stat fi;
-            if (_stat(file, &fi) == 0) {
-                #if defined(S_ISSOCK)
-                    // sockets come back as a 'file' on some systems
-                    // so make sure it's not a socket or directory
-                    // (in other words, make sure it's an actual file)
-                    return !(S_ISDIR(fi.st_mode)) &&
-                        !(S_ISSOCK(fi.st_mode));
-                #else
-                    return !(S_ISDIR(fi.st_mode));
-                #endif
-            }
-            return false;
-        #endif
-    #else
-        struct stat fi;
-        if (stat(file, &fi) == 0) {
-            #if defined(S_ISSOCK)
-                return !(S_ISDIR(fi.st_mode)) &&
-                    !(S_ISSOCK(fi.st_mode));
-            #else
-                return !(S_ISDIR(fi.st_mode));
-            #endif
-        }
-        return false;
-    #endif
-}

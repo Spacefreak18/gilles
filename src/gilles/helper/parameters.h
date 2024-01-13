@@ -12,17 +12,21 @@ typedef struct
     char* sim_string;
     int   program_action;
     int   program_state;
+    char* config_path;
+    char* gnuplot_file;
 
     bool  cli;
     bool  mqtt;
     bool  mysql;
     bool  simon;
     int   verbosity_count;
+    int err;
 
-    char* mysql_user;
-    char* mysql_serv;
-    char* mysql_dbnm;
-    char* mysql_pass;
+    char* db_user;
+    char* db_serv;
+    char* db_dbnm;
+    char* db_pass;
+    char* db_conn;
 
     Simulator sim;
     SimData* simdata;
@@ -33,7 +37,7 @@ Parameters;
 typedef enum
 {
     A_PLAY          = 0,
-    A_BROWSE        = 0
+    A_BROWSE        = 1,
 }
 ProgramAction;
 
@@ -44,6 +48,15 @@ typedef enum
     E_SOMETHING_BAD    = 2
 }
 ConfigError;
+
+typedef enum
+{
+    E_NO_ERROR         = 0,
+    E_BAD_CONFIG       = 1,
+    E_FAILED_DB_CONN   = 2,
+    E_DB_QUERY_FAIL    = 3,
+}
+GillesError;
 
 ConfigError getParameters(int argc, char** argv, Parameters* p);
 int freeparams(Parameters* p);

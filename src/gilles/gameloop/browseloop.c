@@ -14,6 +14,8 @@
 #include <hoel.h>
 #include <jansson.h>
 
+#include <byteswap.h>
+
 #include "session.h"
 #include "gameloop.h"
 #include "../helper/parameters.h"
@@ -31,26 +33,28 @@
 #define STINTS_SCREEN       2
 #define LAPS_SCREEN         3
 
-char datestring[30];
 
-WINDOW* win1;
-WINDOW* win2;
-WINDOW* win3;
-WINDOW* win4;
+WINDOW* bwin1;
+WINDOW* bwin2;
+WINDOW* bwin3;
+WINDOW* bwin4;
 
-int winx, winy;
+int bwinx, bwiny;
 
-int win23y, win23x;
+char blanks[100];
 
+void set_spaces(int spaces)
+{
+    blanks[spaces] = '\0';
+}
 
-
-void handle_winch(int sig)
+void b_handle_winch(int sig)
 {
     endwin();
 
     refresh();
     clear();
-    getmaxyx(stdscr, winx, winy);
+    getmaxyx(stdscr, bwinx, bwiny);
     //win23y = winy/3;
     //win23x = winx/3;
     //win1 = newwin(winx,winy,0,0);
@@ -60,20 +64,21 @@ void handle_winch(int sig)
     refresh();
 }
 
-void rectangle(int y1, int x1, int y2, int x2)
-{
-    mvhline(y1, x1, 0, x2-x1);
-    mvhline(y2, x1, 0, x2-x1);
-    mvvline(y1, x1, 0, y2-y1);
-    mvvline(y1, x2, 0, y2-y1);
-    mvaddch(y1, x1, ACS_ULCORNER);
-    mvaddch(y2, x1, ACS_LLCORNER);
-    mvaddch(y1, x2, ACS_URCORNER);
-    mvaddch(y2, x2, ACS_LRCORNER);
-}
+//void rectangle(int y1, int x1, int y2, int x2)
+//{
+//    mvhline(y1, x1, 0, x2-x1);
+//    mvhline(y2, x1, 0, x2-x1);
+//    mvvline(y1, x1, 0, y2-y1);
+//    mvvline(y1, x2, 0, y2-y1);
+//    mvaddch(y1, x1, ACS_ULCORNER);
+//    mvaddch(y2, x1, ACS_LLCORNER);
+//    mvaddch(y1, x2, ACS_URCORNER);
+//    mvaddch(y2, x2, ACS_LRCORNER);
+//}
 
-int curses_init()
+int b_curses_init()
 {
+    memset(blanks,' ',sizeof(blanks));
     initscr();
     start_color();
 
@@ -82,89 +87,160 @@ int curses_init()
     init_pair(3,COLOR_MAGENTA,0);
     init_pair(4,COLOR_WHITE,0);
 
-    getmaxyx(stdscr, winx, winy);
-    win1 = newwin(winx,winy,0,0);
+    getmaxyx(stdscr, bwinx, bwiny);
+    slogt("windowx %i, windowy %i", bwinx, bwiny);
+    bwin1 = newwin(bwinx,bwiny,0,0);
     //win23y = winy/3;
     //win23x = winx/3;
     //win2 = newwin(win23x,win23y,1,win23y-1);
     //win3 = newwin(win23x,win23y,1,win23y*2-1);
     //win4 = newwin(winx-win23x-2,winy-win23y,win23x+1,win23y-1);
 
-    wbkgd(win1,COLOR_PAIR(1));
-    wbkgd(win2,COLOR_PAIR(1));
-    wbkgd(win3,COLOR_PAIR(1));
-    wbkgd(win4,COLOR_PAIR(1));
+    wbkgd(bwin1,COLOR_PAIR(1));
+    wbkgd(bwin2,COLOR_PAIR(1));
+    wbkgd(bwin3,COLOR_PAIR(1));
+    wbkgd(bwin4,COLOR_PAIR(1));
 
-    signal(SIGWINCH, handle_winch);
+    signal(SIGWINCH, b_handle_winch);
     cbreak();
     noecho();
 
-    box(win1, 0, 0);
-    box(win2, 0, 0);
-    box(win3, 0, 0);
-    box(win4, 0, 0);
+    box(bwin1, 0, 0);
+    box(bwin2, 0, 0);
+    box(bwin3, 0, 0);
+    box(bwin4, 0, 0);
 }
 
-char * removeSpacesFromStr(char *string)
-{
-    int non_space_count = 0;
 
-    for (int i = 0; string[i] != '\0'; i++)
-    {
-        if (string[i] != ' ')
-        {
-            string[non_space_count] = string[i];
-            non_space_count++;
-        }
-    }
-
-    string[non_space_count] = '\0';
-    return string;
-}
-
-void update_date()
-{
-    time_t rawtime;
-    struct tm * timeinfo;
-    time ( &rawtime );
-    timeinfo = localtime ( &rawtime );
-    sprintf(datestring, "%.24s", asctime (timeinfo));
-}
-
-void print_result(struct _h_result result) {
+int telem_result(struct _h_result result, int doublefields, int intfields, int* intarrays, double* doublearrays) {
   int col, row, i;
   char buf[64];
-  slogi("rows: %d, col: %d", result.nb_rows, result.nb_columns);
+  slogt("rows: %d, col: %d", result.nb_rows, result.nb_columns);
+  //int* intarrays;
+  int points = 0;
+  //int doublefields = 3;
+  //int intfields = 3;
+  //int* intarrays;
+  //int* doublearrays;
+  //int* intarrays = malloc((sizeof(int)*1736)*3);
+  //double* doublearrays = malloc((sizeof(double)*1736)*3);
+  int intarrayoffset = 0;
+  int doublearrayoffset = 0;
+
   for (row = 0; row<result.nb_rows; row++) {
     for (col=0; col<result.nb_columns; col++) {
       switch(result.data[row][col].type) {
         case HOEL_COL_TYPE_INT:
-          printf("| %d ", ((struct _h_type_int *)result.data[row][col].t_data)->value);
+          int cc = ((struct _h_type_int *)result.data[row][col].t_data)->value;
+          if (col == 1)
+          {
+            points = cc;
+          }
           break;
         case HOEL_COL_TYPE_DOUBLE:
-          printf("| %f ", ((struct _h_type_double *)result.data[row][col].t_data)->value);
+          //intarrays = malloc((sizeof(int)*1736)*3);
           break;
         case HOEL_COL_TYPE_TEXT:
-          printf("| %s ", ((struct _h_type_text *)result.data[row][col].t_data)->value);
+          slogi("| %s ", ((struct _h_type_text *)result.data[row][col].t_data)->value);
           break;
         case HOEL_COL_TYPE_BLOB:
-          for (i=0; i<((struct _h_type_blob *)result.data[row][col].t_data)->length; i++) {
-            printf("%c", *((char*)(((struct _h_type_blob *)result.data[row][col].t_data)->value+i)));
-            if (i%80 == 0 && i>0) {
-              printf("\n");
-            }
+          int offset2 = 0;
+
+          int j = 0;
+          i = 2;
+          if (col < 5)
+          {
+          while (i<((struct _h_type_blob *)result.data[row][col].t_data)->length)
+          {
+            char sss[10];
+            sss[0] = '0';
+            sss[1] = 'x';
+            sss[2] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+2);
+            sss[3] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+3);
+            sss[4] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+4);
+            sss[5] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+5);
+            sss[6] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+6);
+            sss[7] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+7);
+            sss[8] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+8);
+            sss[9] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+9);
+            long val;
+            int number = (int)strtol(sss, NULL, 16);
+            int swapped = __bswap_32(number);
+
+            intarrays[j+intarrayoffset] = __bswap_32(number);
+            offset2 = offset2 + 8;
+            i+=8;
+            j++;
           }
+          intarrayoffset += points;
+          }
+          else
+          {
+          while (i<((struct _h_type_blob *)result.data[row][col].t_data)->length)
+          {
+            char sss[18];
+            sss[0] = '0';
+            sss[1] = 'x';
+            sss[2] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+2);
+            sss[3] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+3);
+            sss[4] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+4);
+            sss[5] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+5);
+            sss[6] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+6);
+            sss[7] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+7);
+            sss[8] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+8);
+            sss[9] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+9);
+            sss[2+8] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+2+8);
+            sss[3+8] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+3+8);
+            sss[4+8] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+4+8);
+            sss[5+8] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+5+8);
+            sss[6+8] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+6+8);
+            sss[7+8] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+7+8);
+            sss[8+8] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+8+8);
+            sss[9+8] = *((char*)((struct _h_type_blob *)result.data[row][col].t_data)->value+offset2+9+8);
+            long val;
+            int64_t number = (int64_t) strtoll(sss, NULL, 16);
+            int64_t swapped = __bswap_64(number);
+            double d = *((double*)&swapped);
+            doublearrays[j+doublearrayoffset] = (double) d;
+            offset2 = offset2 + 16;
+            i+=16;
+            j++;
+          }
+          doublearrayoffset += points;
+
+          }
+          //snprintf( "blob value: %.*s", ((struct _h_type_blob *)result.data[row][col].t_data)->length, ((struct _h_type_blob *)result.data[row][col].t_data)->value);
+          //char* b = malloc(sizeof(int)*1736);
+          //for (i=0; i<((struct _h_type_blob *)result.data[row][col].t_data)->length; i++) {
+          //  //slogi("%c", *((char*)(((struct _h_type_blob *)result.data[row][col].t_data)->value+i)));
+          //  memcpy(&b[i], ((struct _h_type_blob *)result.data[row][col].t_data)->value+1*sizeof(char), sizeof(char));
+          //}
+//          FILE *out = fopen("memory.bin", "wb");
+//  if(out != NULL)
+//  {
+//    size_t to_go = sizeof(int)*1736;
+//    while(to_go > 0)
+//    {
+//      const size_t wrote = fwrite(b, to_go, 1, out);
+//      if(wrote == 0)
+//        break;
+//      to_go -= wrote;
+//    }
+//    fclose(out);
+//  }
           break;
         case HOEL_COL_TYPE_DATE:
           strftime(buf, 64, "%Y-%m-%d %H:%M:%S", &((struct _h_type_datetime *)result.data[row][col].t_data)->value);
           printf("| %s ", buf);
         case HOEL_COL_TYPE_NULL:
-          printf("| [null] ");
+          slogi("| [null] ");
           break;
       }
     }
     printf("|\n");
   }
+
+  return points;
 }
 
 void get_row_results(struct _h_result result, DBField* fields, void* rows, size_t rowsize) {
@@ -214,7 +290,7 @@ void get_row_results(struct _h_result result, DBField* fields, void* rows, size_
 }
 
 
-int getsessions(struct _h_connection* conn, const char* sessionname, SessionDbo* sess)
+int getsessions(struct _h_connection* conn, int* err, const char* sessionname, SessionDbo* sess)
 {
     struct _h_result result;
     struct _h_data * data;
@@ -222,14 +298,19 @@ int getsessions(struct _h_connection* conn, const char* sessionname, SessionDbo*
     slogt("Performing query");
 
     //sprintf(query, "select session_id, event_id, event_type, duration_min, elapsed_ms, laps, air_temp, road_temp, start_grip, current_grip, is_finished, http_port from %s", "Sessions");
-    sprintf(query, "select session_id, event_id, event_type, laps FROM %s", "Sessions");
+    sprintf(query, "select session_id, event_id, event_type, laps FROM %s ORDER BY session_id DESC LIMIT 25", "Sessions");
     if (h_query_select(conn, query, &result) == H_OK) {
         sess->rows = malloc(sizeof(SessionRowData) * result.nb_rows);
         get_row_results(result, sess->fields, sess->rows, sizeof(SessionRowData));
         //get_session_result(result, sess);
         h_clean_result(&result);
-    } else {
+    }
+    else
+    {
         printf("Error executing query\n");
+        *err = E_DB_QUERY_FAIL;;
+        free(query);
+        return 0;
     }
     free(query);
 
@@ -245,6 +326,7 @@ int getstints(struct _h_connection* conn, const char* sessionname, StintDbo* sti
 
 
     sprintf(query, "select stint_id, driver_id, team_member_id, session_id, car_id, game_car_id, laps, valid_laps, best_lap_id FROM %s WHERE session_id=%i", "Stints", use_id);
+    slogt("execute query %s", query);
     if (h_query_select(conn, query, &result) == H_OK) {
         stint->rows = malloc(sizeof(StintRowData) * result.nb_rows);
         get_row_results(result, stint->fields, stint->rows, sizeof(StintRowData));
@@ -266,10 +348,11 @@ int getlaps(struct _h_connection* conn, const char* sessionname, LapDbo* laps, i
     slogt("Performing query laps");
 
 
-    sprintf(query, "select * FROM %s WHERE stint_id=%i", "Laps", use_id);
+    sprintf(query, "select * FROM %s WHERE %s=%i", "Laps", "stint_id", use_id);
     if (h_query_select(conn, query, &result) == H_OK) {
         laps->rows = malloc(sizeof(LapRowData) * result.nb_rows);
         get_row_results(result, laps->fields, laps->rows, sizeof(LapRowData));
+        //print_result(result);
         //get_stint_result(result, stint);
         h_clean_result(&result);
     } else {
@@ -278,6 +361,89 @@ int getlaps(struct _h_connection* conn, const char* sessionname, LapDbo* laps, i
     free(query);
 
     return result.nb_rows;
+}
+
+int dumptelemetrytofile(struct _h_connection* conn, char* datadir, int lap1id, int lap2id)
+{
+
+    slogt("dumping telemetry to temp file");
+
+    int points = 0;
+    int intfields = 3;
+    int doublefields = 3;
+
+    struct _h_result result;
+    struct _h_data *data;
+    char* query = malloc(150 * sizeof(char));
+    sprintf(query, "SELECT lap_id, points FROM %s WHERE %s=%i", "telemetry", "lap_id", lap1id);
+    if (h_query_select(conn, query, &result) == H_OK) {
+        //laps->rows = malloc(sizeof(LapRowData) * result.nb_rows);
+        //get_row_results(result, laps->fields, laps->rows, sizeof(LapRowData));
+        points = telem_result(result, 3, 3, NULL, NULL);
+        //get_stint_result(result, stint);
+        h_clean_result(&result);
+    } else {
+        printf("Error executing query\n");
+    }
+    free(query);
+
+
+    int* intarrays1 = malloc((sizeof(int))*points*intfields);
+    double* doublearrays1 = malloc((sizeof(double))*points*doublefields);
+    int* intarrays2 = malloc((sizeof(int))*points*intfields);
+    double* doublearrays2 = malloc((sizeof(double))*points*doublefields);
+
+    struct _h_result result1;
+    struct _h_data * data1;
+    char* query1 = malloc(150 * sizeof(char));
+    sprintf(query1, "SELECT lap_id, points, speed, gear, rpms, brake, accel, steer FROM %s WHERE %s=%i", "telemetry", "lap_id", lap1id);
+    if (h_query_select(conn, query1, &result1) == H_OK) {
+        //laps->rows = malloc(sizeof(LapRowData) * result.nb_rows);
+        //get_row_results(result, laps->fields, laps->rows, sizeof(LapRowData));
+        points = telem_result(result1, intfields, doublefields, intarrays1, doublearrays1);
+        //get_stint_result(result, stint);
+        h_clean_result(&result1);
+    } else {
+        printf("Error executing query\n");
+    }
+    free(query1);
+
+    struct _h_result result2;
+    struct _h_data * data2;
+    char* query2 = malloc(150 * sizeof(char));
+    sprintf(query2, "SELECT lap_id, points, speed, gear, rpms, brake, accel, steer FROM %s WHERE %s=%i", "telemetry", "lap_id", lap2id);
+    if (h_query_select(conn, query2, &result2) == H_OK) {
+        //laps->rows = malloc(sizeof(LapRowData) * result.nb_rows);
+        //get_row_results(result, laps->fields, laps->rows, sizeof(LapRowData));
+        points = telem_result(result2, intfields, doublefields, intarrays2, doublearrays2);
+        //get_stint_result(result, stint);
+        h_clean_result(&result2);
+    } else {
+        printf("Error executing query\n");
+    }
+    free(query2);
+
+    char* filename1= "data.out";
+    size_t strsize = strlen(datadir) + strlen(filename1) + 1;
+    char* datafile = malloc(strsize);
+
+    snprintf(datafile, strsize, "%s%s", datadir, filename1);
+    slogt("dumping %i points to file %s", points, datafile);
+    FILE *out = fopen(datafile, "w");
+    fprintf(out, "%s %s %s %s %s %s %s %s %s %s %s %s %s\n", "point", "speed1", "gear1", "rpms1", "brake1", "accel1", "steer1", "speed2", "gear2", "rpms2", "brake2", "accel2", "steer2" );
+    for (int i=0; i<points; i++)
+    {
+      fprintf(out, "%i %i %i %i %f %f %f", i+1, intarrays1[i], intarrays1[i+points], intarrays1[i+(points*2)], doublearrays1[i], doublearrays1[i+points], doublearrays1[i+(points*2)]);
+      fprintf(out, "%i %i %i %i %f %f %f\n", i+1, intarrays2[i], intarrays2[i+points], intarrays2[i+(points*2)], doublearrays2[i], doublearrays2[i+points], doublearrays2[i+(points*2)]);
+    }
+    fclose(out);
+
+    free(intarrays1);
+    free(intarrays2);
+    free(doublearrays1);
+    free(doublearrays2);
+
+    return 1;
 }
 
 //int getsessions(struct _h_connection* conn, const char* carname)
@@ -330,16 +496,22 @@ int getlaps(struct _h_connection* conn, const char* sessionname, LapDbo* laps, i
 
 
 
-void* browseloop(Parameters* p)
+void* browseloop(Parameters* p, char* datadir)
 {
 
     struct _h_result result;
     struct _h_connection * conn;
-    char* connectionstring = "host=zorak.brak dbname=gilles user=test password=thisisatest";
-    conn = h_connect_pgsql(connectionstring);
+    conn = h_connect_pgsql(p->db_conn);
+
+    if (conn == NULL)
+    {
+      slogf("Unable to connect to configured Gilles database. Are the parameters in the config correct? Is the user allowed to access from this address?");
+      p->err = E_FAILED_DB_CONN;
+      return 0;
+    }
 
     slogt("Starting analyzer");
-    curses_init();
+    b_curses_init();
 
     timeout(DEFAULT_UPDATE_RATE);
 
@@ -459,6 +631,30 @@ void* browseloop(Parameters* p)
     DBField avgspeed;
     avgspeed.type = HOEL_COL_TYPE_INT;
     avgspeed.offset = offsetof(LapRowData, avg_speed);
+    DBField f_tyre_temp;
+    f_tyre_temp.type = HOEL_COL_TYPE_DOUBLE;
+    f_tyre_temp.offset = offsetof(LapRowData, f_tyre_temp);
+    DBField r_tyre_temp;
+    r_tyre_temp.type = HOEL_COL_TYPE_DOUBLE;
+    r_tyre_temp.offset = offsetof(LapRowData, r_tyre_temp);
+    DBField f_tyre_wear;
+    f_tyre_wear.type = HOEL_COL_TYPE_DOUBLE;
+    f_tyre_wear.offset = offsetof(LapRowData, f_tyre_wear);
+    DBField r_tyre_wear;
+    r_tyre_wear.type = HOEL_COL_TYPE_DOUBLE;
+    r_tyre_wear.offset = offsetof(LapRowData, r_tyre_wear);
+    DBField f_tyre_press;
+    f_tyre_press.type = HOEL_COL_TYPE_DOUBLE;
+    f_tyre_press.offset = offsetof(LapRowData, f_tyre_press);
+    DBField r_tyre_press;
+    r_tyre_press.type = HOEL_COL_TYPE_DOUBLE;
+    r_tyre_press.offset = offsetof(LapRowData, r_tyre_press);
+    DBField f_brake_temp;
+    f_brake_temp.type = HOEL_COL_TYPE_DOUBLE;
+    f_brake_temp.offset = offsetof(LapRowData, f_brake_temp);
+    DBField r_brake_temp;
+    r_brake_temp.type = HOEL_COL_TYPE_DOUBLE;
+    r_brake_temp.offset = offsetof(LapRowData, r_brake_temp);
     DBField lapsdbfinishedat;
     lapsdbfinishedat.type = HOEL_COL_TYPE_DATE;
     lapsdbfinishedat.offset = offsetof(LapRowData, finished_at);
@@ -477,6 +673,14 @@ void* browseloop(Parameters* p)
     lapsdb.fields[10] = maxspeed;
     lapsdb.fields[11] = avgspeed;
     lapsdb.fields[12] = lapsdbfinishedat;
+    lapsdb.fields[13] = f_tyre_temp;
+    lapsdb.fields[14] = r_tyre_temp;
+    lapsdb.fields[15] = f_tyre_wear;
+    lapsdb.fields[16] = r_tyre_wear;
+    lapsdb.fields[17] = f_tyre_press;
+    lapsdb.fields[18] = r_tyre_press;
+    lapsdb.fields[19] = f_brake_temp;
+    lapsdb.fields[20] = r_brake_temp;
 
     //slogt("sessions has %i rows", sess.numrows);
 
@@ -488,9 +692,10 @@ void* browseloop(Parameters* p)
 
     int screen = SESSIONS_SCREEN;
     char ch;
-    box(win1, 0, 0);
-    wrefresh(win1);
-    int useid = 0;
+    box(bwin1, 0, 0);
+    wrefresh(bwin1);
+    int stint_useid = 0;
+    int lap_useid = 0;
     while (go == true)
     {
 
@@ -503,30 +708,38 @@ void* browseloop(Parameters* p)
         if (action == 2)
         {
                 slogt("going to perform an action");
-                sessions = getsessions(conn, "Sessions", &sess);
-                curresults = sessions;
+                int err = 0;
+                sessions = getsessions(conn, &err, "Sessions", &sess);
+                if (err != E_NO_ERROR)
+                {
+                  go = false;
+                }
+                else
+                {
+                  curresults = sessions;
+                }
         }
 
         if (action == 3)
         {
                 slogt("going to perform an action");
 
-                stintsid = getstints(conn, "Stints", &stints, useid);
+                stintsid = getstints(conn, "Stints", &stints, stint_useid);
                 curresults = stintsid;
         }
         if (action == 4)
         {
                 slogt("going to perform an action");
 
-                lapsresults = getlaps(conn, "laps", &lapsdb, useid);
+                lapsresults = getlaps(conn, "laps", &lapsdb, lap_useid);
                 curresults = lapsresults;
         }
 
         if (action > 0)
         {
-            wclear(win1);
+            wclear(bwin1);
 
-            wprintw(win1, "\n");
+            wprintw(bwin1, "\n");
             switch(screen) {
             case SESSIONS_SCREEN:
               for(int i=0; i<sessions+1; i++)
@@ -534,60 +747,91 @@ void* browseloop(Parameters* p)
 
                     if (i == 0)
                     {
-                      char spacer[4];
-                      sprintf(spacer, "\n");
-                      waddstr(win1, spacer);
+                      wattrset(bwin1, COLOR_PAIR(2));
+                      attron(A_BOLD);
+                      set_spaces(bwiny/2);
+                      waddstr(bwin1, blanks);
+
+                      char sessions_title[9];
+                      sprintf(sessions_title, "Sessions");
+                      waddstr(bwin1, sessions_title);
+                      wprintw(bwin1, "\n");
+
+
+
+
+                      wprintw(bwin1, "\n");
                       
                       char selectind[4];
                       
+                      set_spaces(bwiny/4);
+                      waddstr(bwin1, blanks);
+
+                      char idx[6];
+                      sprintf(idx, "   idx  ");
+                      waddstr(bwin1, idx);
+
+                      set_spaces(bwiny/6);
+                      waddstr(bwin1, blanks);
 
                       char clastlap[26];
                       sprintf(clastlap, "  session name  ");
-                      waddstr(win1, clastlap);
+                      waddstr(bwin1, clastlap);
 
-                      wprintw(win1, "   ");
+                      set_spaces(bwiny/6);
+                      waddstr(bwin1, blanks);
 
                       char cbestlap[14];
                       sprintf(cbestlap, " laps ");
-                      waddstr(win1, cbestlap);
+                      waddstr(bwin1, cbestlap);
 
-                      wprintw(win1, "\n");
+                      wprintw(bwin1, "\n");
+                      for (int j = 0;  j < bwiny-1;  ++j)
+                        waddch(bwin1, ACS_HLINE);
+
+                      //mvhline(5, 5, 0, bwiny-1);
+                      //mvwhline(bwin1, 20, 20, ACS_HLINE, bwiny+1);
+                      //whline(bwin1, ACS_HLINE, 0);
+
+                      wprintw(bwin1, "\n");
                     
+                      attroff(A_BOLD);
+                      wattrset(bwin1, COLOR_PAIR(1));
                     }
                     else
                     {
                       
                       char spacer[4];
                       sprintf(spacer, "\n");
-                      waddstr(win1, spacer);
+                      waddstr(bwin1, spacer);
                       
                       char selectind[6];
                       
                       if ( i == selection )
                       {
-                        useid = sess.rows[i-1].session_id;
+                        stint_useid = sess.rows[i-1].session_id;
                         sprintf(selectind, "_*_");
-                        waddstr(win1, selectind);
+                        waddstr(bwin1, selectind);
 
                       }
                       else
                       {
                         sprintf(selectind, "___");
-                        waddstr(win1, selectind);
+                        waddstr(bwin1, selectind);
                       }
                       int maxstrlen = 20;
-                      wprintw(win1, " %i  ", sess.rows[i-1].session_id);
+                      wprintw(bwin1, " %i  ", sess.rows[i-1].session_id);
 
                       char clastlap[14];
                       sprintf(clastlap, "session name");
-                      waddstr(win1, clastlap);
+                      waddstr(bwin1, clastlap);
 
-                      wprintw(win1, "   ");
+                      wprintw(bwin1, "   ");
                       char cbestlap[14];
                       sprintf(cbestlap, "laps %i", sess.rows[i-1].laps);
-                      waddstr(win1, cbestlap);
+                      waddstr(bwin1, cbestlap);
 
-                      wprintw(win1, "\n");
+                      wprintw(bwin1, "\n");
                     }
                   //box(win1, 0, 0);
                   //wrefresh(win1);
@@ -604,22 +848,22 @@ void* browseloop(Parameters* p)
                     {
                       char spacer[4];
                       sprintf(spacer, "\n");
-                      waddstr(win1, spacer);
+                      waddstr(bwin1, spacer);
                       
                       char selectind[4];
                       
 
                       char clastlap[26];
                       sprintf(clastlap, "  stint name  ");
-                      waddstr(win1, clastlap);
+                      waddstr(bwin1, clastlap);
 
-                      wprintw(win1, "   ");
+                      wprintw(bwin1, "   ");
 
                       char cbestlap[14];
                       sprintf(cbestlap, " laps ");
-                      waddstr(win1, cbestlap);
+                      waddstr(bwin1, cbestlap);
 
-                      wprintw(win1, "\n");
+                      wprintw(bwin1, "\n");
                     
                     }
                     else
@@ -627,35 +871,35 @@ void* browseloop(Parameters* p)
                       
                       char spacer[4];
                       sprintf(spacer, "\n");
-                      waddstr(win1, spacer);
+                      waddstr(bwin1, spacer);
                       
                       char selectind[4];
                       
                       if ( i == selection )
                       {
                         sprintf(selectind, "_*_");
-                        waddstr(win1, selectind);
-                        useid = stints.rows[i-i].stint_id;
+                        waddstr(bwin1, selectind);
+                        lap_useid = stints.rows[i-i].stint_id;
                       }
                       else
                       {
                         sprintf(selectind, "___");
-                        waddstr(win1, selectind);
+                        waddstr(bwin1, selectind);
                       }
                       int maxstrlen = 20;
-                      wprintw(win1, " %i  ", stints.rows[i-1].stint_id);
+                      wprintw(bwin1, " %i  ", stints.rows[i-1].stint_id);
 
                       char clastlap[14];
                       sprintf(clastlap, "stint name");
-                      waddstr(win1, clastlap);
+                      waddstr(bwin1, clastlap);
 
-                      wprintw(win1, "   ");
+                      wprintw(bwin1, "   ");
 
                       char cbestlap[14];
-                      sprintf(cbestlap, "laps %i", stints.rows[i-1].driver_id);
-                      waddstr(win1, cbestlap);
+                      sprintf(cbestlap, "laps %i", stints.rows[i-1].laps);
+                      waddstr(bwin1, cbestlap);
 
-                      wprintw(win1, "\n");
+                      wprintw(bwin1, "\n");
                     }
               }   
               break;
@@ -671,22 +915,22 @@ void* browseloop(Parameters* p)
                     {
                       char spacer[4];
                       sprintf(spacer, "\n");
-                      waddstr(win1, spacer);
+                      waddstr(bwin1, spacer);
 
                       char selectind[4];
 
 
                       char clastlap[16];
                       sprintf(clastlap, "  lap name  ");
-                      waddstr(win1, clastlap);
+                      waddstr(bwin1, clastlap);
 
-                      wprintw(win1, "   ");
+                      wprintw(bwin1, "   ");
 
                       char cbestlap[14];
                       sprintf(cbestlap, " tyre ");
-                      waddstr(win1, cbestlap);
+                      waddstr(bwin1, cbestlap);
 
-                      wprintw(win1, "\n");
+                      wprintw(bwin1, "\n");
 
                     }
                     else
@@ -694,63 +938,63 @@ void* browseloop(Parameters* p)
 
                       char spacer[4];
                       sprintf(spacer, "\n");
-                      waddstr(win1, spacer);
+                      waddstr(bwin1, spacer);
 
                       char selectind[4];
 
                       if ( i == selection )
                       {
                         sprintf(selectind, "_*_");
-                        waddstr(win1, selectind);
+                        waddstr(bwin1, selectind);
                       }
                       else
                       {
                         sprintf(selectind, "___");
-                        waddstr(win1, selectind);
+                        waddstr(bwin1, selectind);
                       }
 
                       char selectind1[4];
-                      if ( i == selection1 )
+                      if ( lapsdb.rows[i-1].lap_id == selection1 )
                       {
                         sprintf(selectind1, "_1_");
-                        waddstr(win1, selectind1);
+                        waddstr(bwin1, selectind1);
                       }
-                      else if ( i == selection2 )
+                      else if ( lapsdb.rows[i-1].lap_id == selection2 )
                       {
                         sprintf(selectind1, "_2_");
-                        waddstr(win1, selectind1);
+                        waddstr(bwin1, selectind1);
                       }
                       else
                       {
                         sprintf(selectind1, "___");
-                        waddstr(win1, selectind1);
+                        waddstr(bwin1, selectind1);
                       }
 
                       int maxstrlen = 20;
-                      wprintw(win1, " %i  ", lapsdb.rows[i-1].lap_id);
+                      wprintw(bwin1, " %i  ", lapsdb.rows[i-1].lap_id);
 
                       char clastlap[14];
                       sprintf(clastlap, "lap name");
-                      waddstr(win1, clastlap);
+                      waddstr(bwin1, clastlap);
 
-                      wprintw(win1, "   ");
+                      wprintw(bwin1, "   ");
 
                       char cbestlap[14];
                       sprintf(cbestlap, "laps %i", lapsdb.rows[i-1].max_speed);
-                      waddstr(win1, cbestlap);
+                      waddstr(bwin1, cbestlap);
 
-                      wprintw(win1, "   ");
+                      wprintw(bwin1, "   ");
                       char gripstr[14];
                       sprintf(gripstr, "%s", lapsdb.rows[i-1].tyre);
-                      waddstr(win1, gripstr);
+                      waddstr(bwin1, gripstr);
                       
-                      wprintw(win1, "   ");
-                      char finstr[30];
+                      wprintw(bwin1, "   ");
+                      char finstr[29];
                       sprintf(finstr, " %s ", lapsdb.rows[i-1].finished_at);
-                      waddstr(win1, finstr);
+                      waddstr(bwin1, finstr);
 
 
-                      wprintw(win1, "\n");
+                      wprintw(bwin1, "\n");
                     }
               }
               break;
@@ -758,12 +1002,12 @@ void* browseloop(Parameters* p)
           }
             action = 0;
         }
-        box(win1, 0, 0);
+        box(bwin1, 0, 0);
         //box(win2, 0, 0);
         //box(win3, 0, 0);
         //box(win4, 0, 0);
 
-        wrefresh(win1);
+        wrefresh(bwin1);
         //wrefresh(win2);
         //wrefresh(win3);
         //wrefresh(win4);
@@ -810,6 +1054,29 @@ void* browseloop(Parameters* p)
                 selection = 1;
                 lastselection = 1;
         }
+        if (ch == 'g')
+        {
+            selection1 = 363;
+            selection2 = 362;
+            if (selection1 > 0 && selection2 > 0)
+            {
+              dumptelemetrytofile(conn, datadir, selection1, selection2);
+
+              slogt("finished dumping data");
+              size_t strsize = strlen(datadir) + strlen(p->gnuplot_file) + 1;
+              char* plotfile = malloc(strsize);
+              snprintf(plotfile, strsize, "%s%s", datadir, p->gnuplot_file);
+              static char* argv1[]={"gnuplot", "-p", "plotfile.gp", NULL};
+              argv1[2] = plotfile;
+              slogi("Using gnu plot file %s", plotfile);
+              if(!fork())
+              {
+                  execv("/usr/bin/gnuplot", argv1);
+              }
+              //wait(NULL);
+            }
+            action = 4;
+        }
         if (ch == 'B')
         {
             selection++;
@@ -828,12 +1095,12 @@ void* browseloop(Parameters* p)
         }
         if (ch == '1')
         {
-          selection1 = selection;
+          selection1 = lapsdb.rows[selection-1].lap_id;
           action = 1;
         }
         if (ch == '2')
         {
-          selection2 = selection;
+          selection2 = lapsdb.rows[selection-1].lap_id;
           action = 1;
         }
 
@@ -841,20 +1108,20 @@ void* browseloop(Parameters* p)
     }
 
 
-    wrefresh(win4);
-    delwin(win4);
+    wrefresh(bwin4);
+    delwin(bwin4);
     endwin();
 
-    wrefresh(win3);
-    delwin(win3);
+    wrefresh(bwin3);
+    delwin(bwin3);
     endwin();
 
-    wrefresh(win2);
-    delwin(win2);
+    wrefresh(bwin2);
+    delwin(bwin2);
     endwin();
 
-    wrefresh(win1);
-    delwin(win1);
+    wrefresh(bwin1);
+    delwin(bwin1);
     endwin();
 
     h_close_db(conn);

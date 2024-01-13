@@ -308,7 +308,7 @@ void* looper(void* thargs)
 
     int go = true;
     char lastsimstatus = false;
-    while (go == true)
+    while (go == true && simdata->simstatus > 1)
     {
         simdatamap(simdata, simmap, p->sim);
 
@@ -907,7 +907,7 @@ int closestint(struct _h_connection* conn, int stintid, int stintlaps, int valid
     return res1;
 }
 
-int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, int sector3, int cuts, int crashes, int maxspeed, int avgspeed,
+int closelapquery(struct _h_connection* conn, int lapid, int sector1, int sector2, int sector3, int cuts, int crashes, int maxspeed, int avgspeed,
     double fbraketemp, double rbraketemp, double ftyrewear, double rtyrewear, double ftyretemp, double rtyretemp, double ftyrepress, double rtyrepress)
 {
 
@@ -932,6 +932,20 @@ int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, in
     return res1;
 }
 
+int closelap(struct _h_connection* conn, SimData* simdata, int lapid, int sector1, int sector2, int sector3, int cuts, int crashes, int maxspeed, int avgspeed)
+{
+    double fbraketemp = (simdata->braketemp[0] + simdata->braketemp[1])/2;
+    double rbraketemp = (simdata->braketemp[2] + simdata->braketemp[3])/2;
+    double ftyrewear = (simdata->tyrewear[0] + simdata->tyrewear[1])/2;
+    double rtyrewear = (simdata->tyrewear[2] + simdata->tyrewear[3])/2;
+    double ftyretemp = (simdata->tyretemp[0] + simdata->tyretemp[1])/2;
+    double rtyretemp = (simdata->tyretemp[2] + simdata->tyretemp[3])/2;
+    double ftyrepress = (simdata->tyrepressure[0] + simdata->tyrepressure[1])/2;
+    double rtyrepress = (simdata->tyrepressure[2] + simdata->tyrepressure[3])/2;
+
+    closelapquery(conn, lapid, sector1, sector2, sector3, 0, 0, 0, 0, fbraketemp, rbraketemp, ftyrewear, rtyrewear, ftyretemp, rtyretemp, ftyrepress, rtyrepress);
+
+}
 
 int addstintlap(struct _h_connection* conn, int stintid)
 {
@@ -1162,6 +1176,20 @@ void print_bytes(void *ptr, int size)
 }
 
 
+int updatetelemetrydata(struct _h_connection* conn, int tracksamples, int telemid, int lapid,
+    int* speeddata, int* rpmdata, int* geardata,
+    double* steerdata, double* acceldata, double* brakedata)
+{
+    int b = 0;
+    b = updatetelemetry(conn, telemid, tracksamples*sizeof(double), "steer", steerdata);
+    b = updatetelemetry(conn, telemid, tracksamples*sizeof(double), "accel", acceldata);
+    b = updatetelemetry(conn, telemid, tracksamples*sizeof(double), "brake", brakedata);
+    b = updatetelemetry(conn, telemid, tracksamples*sizeof(int), "rpms", rpmdata);
+    b = updatetelemetry(conn, telemid, tracksamples*sizeof(int), "gear", geardata);
+    b = updatetelemetry(conn, telemid, tracksamples*sizeof(int), "speed", speeddata);
+
+    return b;
+}
 
 void* simviewmysql(void* thargs)
 {
@@ -1171,7 +1199,7 @@ void* simviewmysql(void* thargs)
 
     struct _h_result result;
     struct _h_connection * conn;
-    char* connectionstring = "host=zorak.brak dbname=gilles user=test password=thisisatest";
+    char* connectionstring = "host=zorak.brak dbname=gilles user=gilles password=MyRandomPasswordIsGood";
     conn = h_connect_pgsql(connectionstring);
 
 
@@ -1214,7 +1242,7 @@ void* simviewmysql(void* thargs)
     int track_samples = simdata->trackspline / TRACK_SAMPLE_RATE;
     slogt("track samples %i", track_samples);
 
-    int stintlaps = 0;
+    int stintlaps = 1;
     int validstintlaps = 0;
     bool validind = true;
 
@@ -1225,18 +1253,6 @@ void* simviewmysql(void* thargs)
     double* acceldata = malloc(track_samples * sizeof(simdata->gas));
     double* brakedata = malloc(track_samples * sizeof(simdata->brake));
 
-    //double* tyretemp0 = malloc(track_samples * sizeof(simdata->tyretemp[0]));
-    //double* tyretemp1 = malloc(track_samples * sizeof(simdata->tyretemp[0]));
-    //double* tyretemp2 = malloc(track_samples * sizeof(simdata->tyretemp[0]));
-    //double* tyretemp3 = malloc(track_samples * sizeof(simdata->tyretemp[0]));
-    //double* tyrepressure0 = malloc(track_samples * sizeof(simdata->tyrepressure[0]));
-    //double* tyrepressure1 = malloc(track_samples * sizeof(simdata->tyrepressure[0]));
-    //double* tyrepressure2 = malloc(track_samples * sizeof(simdata->tyrepressure[0]));
-    //double* tyrepressure3 = malloc(track_samples * sizeof(simdata->tyrepressure[0]));
-    //double* braketemp0 = malloc(track_samples * sizeof(simdata->braketemp[0]));
-    //double* braketemp1 = malloc(track_samples * sizeof(simdata->braketemp[0]));
-    //double* braketemp2 = malloc(track_samples * sizeof(simdata->braketemp[0]));
-    //double* braketemp3 = malloc(track_samples * sizeof(simdata->braketemp[0]));
     int sectortimes[4];
 
     if (p->program_state < 0)
@@ -1259,19 +1275,6 @@ void* simviewmysql(void* thargs)
         geardata[pos] = simdata->gear;
 
 
-        //tyretemp0[pos] = simdata->tyretemp[0];
-        //tyretemp1[pos] = simdata->tyretemp[1];
-        //tyretemp2[pos] = simdata->tyretemp[2];
-        //tyretemp3[pos] = simdata->tyretemp[3];
-        //tyrepressure0[pos] = simdata->tyrepressure[0];
-        //tyrepressure1[pos] = simdata->tyrepressure[1];
-        //tyrepressure2[pos] = simdata->tyrepressure[2];
-        //tyrepressure3[pos] = simdata->tyrepressure[3];
-        //braketemp0[pos] = simdata->braketemp[0];
-        //braketemp1[pos] = simdata->braketemp[1];
-        //braketemp2[pos] = simdata->braketemp[2];
-        //braketemp3[pos] = simdata->braketemp[3];
-
 
 
         sessionstatus = simdata->session;
@@ -1292,7 +1295,7 @@ void* simviewmysql(void* thargs)
             }
 
             //pitstatus = 1;
-            stintlaps = 0;
+            stintlaps = 1;
             validstintlaps = 0;
         }
         pitstatus = simdata->inpit;
@@ -1306,7 +1309,7 @@ void* simviewmysql(void* thargs)
 
             closestint(conn, stintid, stintlaps, validstintlaps);
             stintid = addstint(conn, sessionid, driverid, carid);
-            stintlaps = 0;
+            stintlaps = 1;
             validstintlaps = 0;
         }
         if (lap != lastlap)
@@ -1318,26 +1321,11 @@ void* simviewmysql(void* thargs)
                 validstintlaps++;
             }
 
-            double fbraketemp = (simdata->braketemp[0] + simdata->braketemp[1])/2;
-            double rbraketemp = (simdata->braketemp[2] + simdata->braketemp[3])/2;
-            double ftyrewear = (simdata->tyrewear[0] + simdata->tyrewear[1])/2;
-            double rtyrewear = (simdata->tyrewear[2] + simdata->tyrewear[3])/2;
-            double ftyretemp = (simdata->tyretemp[0] + simdata->tyretemp[1])/2;
-            double rtyretemp = (simdata->tyretemp[2] + simdata->tyretemp[3])/2;
-            double ftyrepress = (simdata->tyrepressure[0] + simdata->tyrepressure[1])/2;
-            double rtyrepress = (simdata->tyrepressure[2] + simdata->tyrepressure[3])/2;
-
-            closelap(conn, stintlapid, sectortimes[1], sectortimes[2], simdata->lastsectorinms, 0, 0, 0, 0, fbraketemp, rbraketemp, ftyrewear, rtyrewear, ftyretemp, rtyretemp, ftyrepress, rtyrepress);
+            closelap(conn, simdata, stintlapid, sectortimes[1], sectortimes[2], simdata->lastsectorinms, 0, 0, 0, 0);
 
             stintlapid = addstintlap(conn, stintid);
             int telemid = addtelemetry(conn, track_samples, stintlapid);
-            int b = updatetelemetry(conn, telemid, track_samples*sizeof(double), "steer", steerdata);
-            b = updatetelemetry(conn, telemid, track_samples*sizeof(double), "accel", acceldata);
-            b = updatetelemetry(conn, telemid, track_samples*sizeof(double), "brake", brakedata);
-            b = updatetelemetry(conn, telemid, track_samples*sizeof(int), "rpms", rpmdata);
-            b = updatetelemetry(conn, telemid, track_samples*sizeof(int), "gear", geardata);
-            b = updatetelemetry(conn, telemid, track_samples*sizeof(int), "speed", speeddata);
-
+            int b = updatetelemetrydata(conn, track_samples, telemid, stintlapid, speeddata, geardata, rpmdata, steerdata, acceldata, brakedata);
             tick = 0;
             // assume lap is valid until it isn't
             validind = true;
@@ -1354,6 +1342,9 @@ void* simviewmysql(void* thargs)
 
         if (p->program_state < 0)
         {
+            int telemid = addtelemetry(conn, track_samples, stintlapid);
+            int b = updatetelemetrydata(conn, track_samples, telemid, stintlapid, speeddata, geardata, rpmdata, steerdata, acceldata, brakedata);
+            closelap(conn, simdata, stintlapid, sectortimes[1], sectortimes[2], simdata->lastsectorinms, 0, 0, 0, 0);
             closestint(conn, stintid, stintlaps, validstintlaps);
             closesession(conn, sessionid);
             go = false;

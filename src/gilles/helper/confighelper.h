@@ -18,15 +18,6 @@ typedef enum
 }
 SimulatorUpdate;
 
-typedef enum
-{
-    GILLES_ERROR_NONE          = 0,
-    GILLES_ERROR_UNKNOWN       = 1,
-    GILLES_ERROR_INVALID_SIM   = 2,
-    GILLES_ERROR_NODATA        = 4,
-}
-GillesError;
-
 typedef struct
 {
     ProgramAction program_action;

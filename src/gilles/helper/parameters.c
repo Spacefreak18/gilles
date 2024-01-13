@@ -14,12 +14,20 @@ int freeparams(Parameters* p)
     {
         free(p->sim_string);
     }
-    if (p->mysql == true)
+    if (p->mysql == true || p->program_action == A_BROWSE)
     {
-        if(p->mysql_user != NULL)
+        if(p->db_user != NULL)
         {
-            free(p->mysql_user);
+            free(p->db_user);
         }
+        if(p->db_conn != NULL)
+        {
+            free(p->db_conn);
+        }
+    }
+    if (p->config_path != NULL)
+    {
+        free(p->config_path);
     }
     return 0;
 }
@@ -45,6 +53,7 @@ ConfigError getParameters(int argc, char** argv, Parameters* p)
 
     struct arg_rex* cmd1             = arg_rex1(NULL, NULL, "play", NULL, REG_ICASE, NULL);
     struct arg_rex* cmd2             = arg_rex1(NULL, NULL, "browse", NULL, REG_ICASE, NULL);
+    struct arg_str* arg_cpath        = arg_strn("f", "configpath", "<path of config>", 0, 1, NULL);
     struct arg_str* arg_sim          = arg_strn("s", "sim", "<gamename>", 0, 1, NULL);
     struct arg_lit* arg_cli          = arg_lit0("c",  "textui", "text only ui");
     struct arg_lit* arg_mqtt         = arg_lit0("Q",  "mqtt", "send data to local mqtt server with connection settings speciifed in config");
@@ -93,17 +102,22 @@ ConfigError getParameters(int argc, char** argv, Parameters* p)
         {
             p->mysql = true;
         }
+        if (arg_cpath->sval[0] != NULL)
+        {
+            p->config_path = strdup(arg_cpath->sval[0]);
+        }
         exitcode = E_SUCCESS_AND_DO;
     }
-
-    if (nerrors1==0)
+    else
     {
-        p->program_action = A_BROWSE;
-        //p->sim_string = strdup(arg_sim->sval[0]);
-        p->verbosity_count = arg_verbosity1->count;
-        exitcode = E_SUCCESS_AND_DO;
+        if (nerrors1==0)
+        {
+            p->program_action = A_BROWSE;
+            //p->sim_string = strdup(arg_sim->sval[0]);
+            p->verbosity_count = arg_verbosity1->count;
+            exitcode = E_SUCCESS_AND_DO;
+        }
     }
-
     // interpret some special cases before we go through trouble of reading the config file
     if (help0->count > 0)
     {

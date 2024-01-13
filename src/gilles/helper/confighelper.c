@@ -7,6 +7,7 @@
 #include "confighelper.h"
 
 #include "../slog/slog.h"
+#include "parameters.h"
 
 //int strtogame(const char* game, GillesSettings* gs)
 //{
@@ -30,21 +31,34 @@
 //    return GILLES_ERROR_NONE;
 //}
 
-int loadmysql(config_t* cfg, Parameters* p)
+int loaddbconfig(config_t* cfg, Parameters* p)
 {
-    config_setting_t* config_mysql_array = NULL;
-    config_mysql_array = config_lookup(cfg, "mysql");
+    config_setting_t* config_db_array = NULL;
+    config_db_array = config_lookup(cfg, "db");
 
-    config_setting_t* config_mysql = NULL;
-    config_mysql = config_setting_get_elem(config_mysql_array, 0);
+    config_setting_t* config_db = NULL;
+    config_db = config_setting_get_elem(config_db_array, 0);
 
-    if (config_mysql == NULL) {
-        slogi("found no mysql settings");
+    if (config_db == NULL) {
+        slogi("found no db settings");
+        return E_BAD_CONFIG;
     }
     const char* temp;
-    config_setting_lookup_string(config_mysql, "user", &temp);
-    p->mysql_user = strdup(temp);
-    return 0;
+    config_setting_lookup_string(config_db, "user", &temp);
+    p->db_user = strdup(temp);
+    config_setting_lookup_string(config_db, "password", &temp);
+    p->db_pass = strdup(temp);
+    config_setting_lookup_string(config_db, "server", &temp);
+    p->db_serv = strdup(temp);
+    config_setting_lookup_string(config_db, "database", &temp);
+    p->db_dbnm = strdup(temp);
+
+    size_t strsize = strlen(p->db_user) + strlen(p->db_pass) + strlen(p->db_serv) + strlen(p->db_dbnm) + 29 + 1;
+    p->db_conn = malloc(strsize);
+
+    snprintf(p->db_conn, strsize, "host=%s dbname=%s user=%s password=%s", p->db_serv, p->db_dbnm, p->db_user, p->db_pass);
+
+    return E_NO_ERROR;
 }
 
 int loadconfig(const char* config_file_str, Parameters* p)
@@ -58,9 +72,32 @@ int loadconfig(const char* config_file_str, Parameters* p)
     else
     {
         slogi("Parsing config file");
-        if (p->mysql == true)
+
+        if (p->program_action == A_BROWSE)
         {
-            loadmysql(&cfg, p);
+            config_setting_t* config_graph_array = NULL;
+            config_graph_array = config_lookup(&cfg, "graph");
+
+            config_setting_t* config_graph = NULL;
+            config_graph = config_setting_get_elem(config_graph_array, 0);
+
+            if (config_graph == NULL) {
+                slogi("found no graph settings");
+                return E_BAD_CONFIG;
+            }
+            const char* temp;
+            config_setting_lookup_string(config_graph, "gnuplotfile", &temp);
+            p->gnuplot_file = strdup(temp);
+            slogi("set gnuplot config file %s", p->gnuplot_file);
+        }
+
+        if (p->mysql == true || p->program_action == A_BROWSE)
+        {
+            int err = loaddbconfig(&cfg, p);
+            if (err != E_NO_ERROR)
+            {
+                return err;
+            }
         }
     }
 
