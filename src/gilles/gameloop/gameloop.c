@@ -765,7 +765,7 @@ int addtrackconfig(struct _h_connection* conn, int trackconfigid, const char* tr
     json_t *root = json_object();
     json_t *json_arr = json_array();
 
-    json_object_set_new( root, "table", json_string(track) );
+    json_object_set_new( root, "table", json_string("track_config") );
     json_object_set_new( root, "values", json_arr );
 
     json_t* values = json_object();
@@ -777,7 +777,10 @@ int addtrackconfig(struct _h_connection* conn, int trackconfigid, const char* tr
     json_object_set_new(values, "length", json_integer(length));
 
     json_array_append(json_arr, values);
-    int res = h_insert(conn, root, NULL);
+    char* qq;
+    int res = h_insert(conn, root, &qq);
+    sloge("track config insert result %i", res);
+    sloge("track config query %s", qq);
     trackconfigid = getLastInsertID(conn);
     json_decref(root);
     json_decref(values);
@@ -1048,14 +1051,15 @@ int updatetelemetry(struct _h_connection* conn, int telemid, int size, const cha
 int gettrack(struct _h_connection* conn, const char* trackname)
 {
 
+
     json_t *j_result;
     char* where_clause = h_build_where_clause(conn, "config_name=%s AND track_name=%s", "default", trackname);
     json_t* j_query = json_pack("{sss[s]s{s{ssss}}}", "table", "track_config", "columns", "track_config_id", "where", " ", "operator", "raw",
             "value", where_clause);
 
-    //char* qq;
+    char* qq;
     int res = h_select(conn, j_query, &j_result, NULL);
-    //slogi("here your query: %s", qq);
+
   // Deallocate j_query since it won't be needed anymore
   json_decref(j_query);
   h_free(where_clause);
@@ -1199,12 +1203,19 @@ void* simviewmysql(void* thargs)
 
     struct _h_result result;
     struct _h_connection * conn;
-    char* connectionstring = "host=zorak.brak dbname=gilles user=gilles password=MyRandomPasswordIsGood";
-    conn = h_connect_pgsql(connectionstring);
+    conn = h_connect_pgsql(p->db_conn);
 
+    if (conn == NULL)
+    {
+      slogf("Unable to connect to configured Gilles database. Are the parameters in the config correct? Is the user allowed to access from this address?");
+      p->err = E_FAILED_DB_CONN;
+      return 0;
+    }
+    slogi("Starting telemetry");
 
     int trackconfig = gettrack(conn, simdata->track);
     trackconfig = addtrackconfig(conn, trackconfig, simdata->track, simdata->trackdistancearound);
+    slogt("Detected track configuration id: %i", trackconfig);
     int eventid = addevent(conn, trackconfig);
     int driverid = getdriver(conn, simdata->driver);
     driverid = adddriver(conn, driverid, simdata->driver);
