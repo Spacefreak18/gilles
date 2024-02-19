@@ -590,9 +590,11 @@ int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, in
 
     slogt("closing previous lap ", lapid);
 
+    int laptime = (simdata->lastlap.minutes * 60000) + (simdata->lastlap.seconds * 1000) + simdata->lastlap.fraction;
+
     char* query = malloc((sizeof(char)*650));
     sprintf(query, "UPDATE %s SET %s=%i, %s=%i, %s=%i, %s=%i, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, finished_at=NOW() WHERE lap_id=%i;",
-            "laps", "time", simdata->lastlap, "sector_1", sector1, "sector_2", sector2, "sector_3", sector3,
+            "laps", "time", laptime, "sector_1", sector1, "sector_2", sector2, "sector_3", sector3,
             "right_front_tyre_temp", simdata->tyretemp[1],
             "right_rear_tyre_temp",  simdata->tyretemp[3],
             "right_front_tyre_wear", simdata->tyrewear[1],

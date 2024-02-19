@@ -73,7 +73,7 @@ typedef struct StintRowData
     int laps;
     int valid_laps;
     int best_lap_id;
-    unsigned char tyre[10];
+    unsigned char tyre[50];
 }
 StintRowData;
 
@@ -85,7 +85,7 @@ typedef struct LapRowData
     int sector_2;
     int sector_3;
     double grip;
-    unsigned char tyre[10];
+    unsigned char tyre[50];
     int time;
     int cuts;
     int crashes;

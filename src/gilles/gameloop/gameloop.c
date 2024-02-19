@@ -580,22 +580,22 @@ void* looper(void* thargs)
             waddstr(win3, position);
 
             char lastlap[14];
-            int minutes = simdata->lastlap/60000;
-            int seconds = simdata->lastlap/1000-(minutes*60);
-            int fraction = simdata->lastlap-(minutes*60000)-(seconds*1000);
+            //int minutes = simdata->lastlap/60000;
+            //int seconds = simdata->lastlap/1000-(minutes*60);
+            //int fraction = simdata->lastlap-(minutes*60000)-(seconds*1000);
             wattrset(win3, COLOR_PAIR(1));
             wprintw(win3, "   Last Lap: ");
-            sprintf(lastlap, "%d:%02d:%02d\n", minutes, seconds, fraction);
+            sprintf(lastlap, "%d:%02d:%02d\n", simdata->lastlap.minutes, simdata->lastlap.seconds, simdata->lastlap.fraction);
             wattrset(win3, COLOR_PAIR(2));
             waddstr(win3, lastlap);
 
             char bestlap[14];
-            minutes = simdata->bestlap/60000;
-            seconds = simdata->bestlap/1000-(minutes*60);
-            fraction = simdata->bestlap-(minutes*60000)-(seconds*1000);
+            //minutes = simdata->bestlap/60000;
+            //seconds = simdata->bestlap/1000-(minutes*60);
+            //fraction = simdata->bestlap-(minutes*60000)-(seconds*1000);
             wattrset(win3, COLOR_PAIR(1));
             wprintw(win3, "   Best Lap: ");
-            sprintf(bestlap, "%d:%02d:%02d\n", minutes, seconds, fraction);
+            sprintf(bestlap, "%d:%02d:%02d\n", simdata->bestlap.minutes, simdata->bestlap.seconds, simdata->bestlap.fraction);
             wattrset(win3, COLOR_PAIR(2));
             waddstr(win3, bestlap);
 
