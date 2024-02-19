@@ -1,22 +1,32 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <ncurses.h>
 #include <signal.h>
 #include <time.h>
 #include <sys/time.h>
 #include <MQTTClient.h>
+#include <poll.h>
+#include <termios.h>
+#include <hoel.h>
+#include <jansson.h>
 
+#include "hoeldb.h"
+#include "telemetry.h"
 #include "gameloop.h"
 #include "../helper/parameters.h"
 #include "../helper/confighelper.h"
+#include "../helper/dirhelper.h"
 #include "../simulatorapi/simapi/simapi/simdata.h"
 #include "../simulatorapi/simapi/simapi/simmapper.h"
 #include "../slog/slog.h"
 
-#include <json-c/json.h>
-
-#define DEFAULT_UPDATE_RATE      100
+#define DEFAULT_UPDATE_RATE      60
+#define DATA_UPDATE_RATE         32
+#define TRACK_SAMPLE_RATE        4
+#define SIM_CHECK_RATE           1
 
 #define ADDRESS     "tcp://localhost:1883"
 #define CLIENTID    "gilles"
@@ -99,7 +109,7 @@ int curses_init()
     box(win4, 0, 0);
 }
 
-char * removeSpacesFromStr(char *string)
+char* removeSpacesFromStr(char* string)
 {
     int non_space_count = 0;
 
@@ -119,41 +129,195 @@ char * removeSpacesFromStr(char *string)
 void update_date()
 {
     time_t rawtime;
-    struct tm * timeinfo;
+    struct tm* timeinfo;
     time ( &rawtime );
     timeinfo = localtime ( &rawtime );
     sprintf(datestring, "%.24s", asctime (timeinfo));
 }
 
-void* looper(void* thargs)
+
+int mainloop(Parameters* p)
 {
-    Parameters* p = (Parameters*) thargs;
+    pthread_t ui_thread;
+    pthread_t mqtt_thread;
+    pthread_t mysql_thread;
+
     SimData* simdata = malloc(sizeof(SimData));
     SimMap* simmap = malloc(sizeof(SimMap));
 
-    int error = siminit(simdata, simmap, 1);
-    if (error != GILLES_ERROR_NONE)
+    struct termios newsettings, canonicalmode;
+    tcgetattr(0, &canonicalmode);
+    newsettings = canonicalmode;
+    newsettings.c_lflag &= (~ICANON & ~ECHO);
+    newsettings.c_cc[VMIN] = 1;
+    newsettings.c_cc[VTIME] = 0;
+    tcsetattr(0, TCSANOW, &newsettings);
+    char ch;
+    struct pollfd mypoll = { STDIN_FILENO, POLLIN|POLLPRI };
+
+    p->simdata = simdata;
+    p->simmap = simmap;
+    fprintf(stdout, "Searching for sim data... Press q to quit...\n");
+
+    double update_rate = SIM_CHECK_RATE;
+    int go = true;
+    char lastsimstatus = false;
+    while (go == true)
     {
-        slogf("Fatal error getting simulator data");
-        //return error;
+
+        getSim(simdata, simmap, &p->simon, &p->sim);
+
+        if (p->simon == true && simdata->simstatus > 1)
+        {
+            p->program_state = 1;
+            if (p->cli == true)
+            {
+                if (pthread_create(&ui_thread, NULL, &clilooper, p) != 0)
+                {
+                    printf("Uh-oh!\n");
+                    return -1;
+                }
+            }
+            else
+            {
+                if (pthread_create(&ui_thread, NULL, &looper, p) != 0)
+                {
+                    printf("Uh-oh!\n");
+                    return -1;
+                }
+            }
+            //if (p->mqtt == true)
+            //{
+            //    if (pthread_create(&mqtt_thread, NULL, &b4madmqtt, p) != 0)
+            //    {
+            //        printf("Uh-oh!\n");
+            //        return -1;
+            //    }
+            //}
+            if (p->mysql == true)
+            {
+                if (pthread_create(&mysql_thread, NULL, &simviewmysql, p) != 0)
+                {
+                    printf("Uh-oh!\n");
+                    return -1;
+                }
+            }
+
+            pthread_join(ui_thread, NULL);
+            p->program_state = -1;
+            //if (p->mqtt == true)
+            //{
+            //    pthread_join(mqtt_thread, NULL);
+            //}
+            if (p->mysql == true)
+            {
+                pthread_join(mysql_thread, NULL);
+            }
+        }
+
+        if (p->simon == true)
+        {
+            p->simon = false;
+            fprintf(stdout, "Searching for sim data... Press q again to quit...\n");
+            sleep(2);
+        }
+
+        if( poll(&mypoll, 1, 1000.0/update_rate) )
+        {
+            scanf("%c", &ch);
+            if(ch == 'q')
+            {
+                go = false;
+            }
+        }
     }
-    
+
+    fprintf(stdout, "\n");
+    fflush(stdout);
+    tcsetattr(0, TCSANOW, &canonicalmode);
+
+    free(simdata);
+    free(simmap);
+
+    return 0;
+}
+
+void* clilooper(void* thargs)
+{
+    Parameters* p = (Parameters*) thargs;
+    SimData* simdata = p->simdata;
+    SimMap* simmap = p->simmap;
+
+    struct termios newsettings, canonicalmode;
+    tcgetattr(0, &canonicalmode);
+    newsettings = canonicalmode;
+    newsettings.c_lflag &= (~ICANON & ~ECHO);
+    newsettings.c_cc[VMIN] = 1;
+    newsettings.c_cc[VTIME] = 0;
+    tcsetattr(0, TCSANOW, &newsettings);
+    char ch;
+    struct pollfd mypoll = { STDIN_FILENO, POLLIN|POLLPRI };
+
+    fprintf(stdout, "Press q to quit...\n");
+    fprintf(stdout, "Press c for a useful readout of car telemetry...\n");
+    fprintf(stdout, "Press s for basic sesion information...\n");
+    fprintf(stdout, "Press l for basic lap / stint information...\n");
+
+    double update_rate = DEFAULT_UPDATE_RATE;
+    int go = true;
+    char lastsimstatus = false;
+    while (go == true && simdata->simstatus > 1)
+    {
+        simdatamap(simdata, simmap, p->sim);
+
+        if( poll(&mypoll, 1, 1000.0/update_rate) )
+        {
+            scanf("%c", &ch);
+            if(ch == 'q')
+            {
+                go = false;
+            }
+            if(ch == 'c')
+            {
+                slogi("speed: %i gear: %i", simdata->velocity, simdata->gear);
+            }
+            if(ch == 's')
+            {
+                slogi("status: %i", simdata->simstatus);
+            }
+        }
+    }
+
+    fprintf(stdout, "\n");
+    fflush(stdout);
+    tcsetattr(0, TCSANOW, &canonicalmode);
+
+    return 0;
+}
+
+void* looper(void* thargs)
+{
+    Parameters* p = (Parameters*) thargs;
+    SimData* simdata = p->simdata;
+    SimMap* simmap = p->simmap;
+
     curses_init();
 
     timeout(DEFAULT_UPDATE_RATE);
 
     int go = true;
     char lastsimstatus = false;
-    while (go == true)
+    while (go == true && simdata->simstatus > 1)
     {
-        simdatamap(simdata, simmap, 1);
+        simdatamap(simdata, simmap, p->sim);
 
         wclear(win1);
         wclear(win2);
         wclear(win3);
         wclear(win4);
 
-        { // window 1 car diagnostics
+        {
+            // window 1 car diagnostics
 
             char spacer[14];
             sprintf(spacer, "\n");
@@ -308,7 +472,8 @@ void* looper(void* thargs)
             rectangle(18, 18, 22, 22); // right rear
         }
 
-        { // window 2 session info
+        {
+            // window 2 session info
 
             char spacer[14];
             sprintf(spacer, "\n");
@@ -335,7 +500,7 @@ void* looper(void* thargs)
             sprintf(tracktemp, "%.0f\n", simdata->tracktemp);
             wattrset(win2, COLOR_PAIR(2));
             waddstr(win2, tracktemp);
-            
+
             char numlaps[14];
             wbkgd(win2,COLOR_PAIR(1));
             wattrset(win2, COLOR_PAIR(1));
@@ -343,7 +508,7 @@ void* looper(void* thargs)
             sprintf(numlaps, "%i\n", simdata->numlaps);
             wattrset(win2, COLOR_PAIR(2));
             waddstr(win2, numlaps);
-            
+
             char timeleft[14];
             int hours = simdata->timeleft/6000;
             int minutes = simdata->timeleft/60 - (hours*6000);
@@ -371,7 +536,8 @@ void* looper(void* thargs)
             wattrset(win2, COLOR_PAIR(1));
         }
 
-        { // window 3 basic timing and scoring
+        {
+            // window 3 basic timing and scoring
 
             char spacer[14];
             sprintf(spacer, "\n");
@@ -436,7 +602,8 @@ void* looper(void* thargs)
             wattrset(win3, COLOR_PAIR(1));
         }
 
-        { // window 4 live standings timing and scoring
+        {
+            // window 4 live standings timing and scoring
             char spacer[14];
             sprintf(spacer, "\n");
             waddstr(win4, spacer);
@@ -471,7 +638,9 @@ void* looper(void* thargs)
                 for(i=0; i<displaycars; i++)
                 {
                     if((ihold+1)==simdata->cars[i].pos)
+                    {
                         break;
+                    }
                 }
 
                 wattrset(win4, COLOR_PAIR(2));
@@ -501,8 +670,8 @@ void* looper(void* thargs)
 
                 if(simdata->cars[i].inpitlane == 0 && simdata->cars[i].inpit == 0)
                 {
-                wattrset(win4, COLOR_PAIR(1));
-                wprintw(win4, "  ontrack  ");
+                    wattrset(win4, COLOR_PAIR(1));
+                    wprintw(win4, "  ontrack  ");
                 }
                 else
                 {
@@ -553,159 +722,191 @@ void* looper(void* thargs)
     delwin(win1);
     endwin();
 
-    free(simdata);
-    free(simmap);
 
     //return 0;
 }
 
-void* b4madmqtt(void* thargs)
+void* simviewmysql(void* thargs)
 {
     Parameters* p = (Parameters*) thargs;
-    SimData* simdata = malloc(sizeof(SimData));
-    SimMap* simmap = malloc(sizeof(SimMap));
-    long unix_time_start;
-    char time_buff[11];
+    SimData* simdata = p->simdata;
+    SimMap* simmap = p->simmap;
 
-    int error = siminit(simdata, simmap, 1);
-    if (error != GILLES_ERROR_NONE)
+    struct _h_result result;
+    struct _h_connection* conn;
+    conn = h_connect_pgsql(p->db_conn);
+
+    if (conn == NULL)
     {
-        slogf("Fatal error getting simulator data");
-        //return error;
+        slogf("Unable to connect to configured Gilles database. Are the parameters in the config correct? Is the user allowed to access from this address?");
+        p->err = E_FAILED_DB_CONN;
+        return 0;
+    }
+    slogi("Starting telemetry");
+
+    int trackconfig = gettrack(conn, simdata->track);
+    if (trackconfig == -1)
+    {
+        slogf("Problem performing select query. Does the db user have read permissions?");
+        p->err = E_FAILED_DB_CONN;
+        return 0;
     }
 
-    bool mqtt = p->mqtt;
-    bool mqtt_connected = false;
-
-    MQTTClient client;
-    MQTTClient_connectOptions conn_opts = MQTTClient_connectOptions_initializer;
-    MQTTClient_message pubmsg = MQTTClient_message_initializer;
-    MQTTClient_deliveryToken token;
-    int rc;
-
-    // Create a new MQTT client
-    MQTTClient_create(&client, ADDRESS, CLIENTID,
-    MQTTCLIENT_PERSISTENCE_NONE, NULL);
-
-    // Connect to the MQTT server
-    if (mqtt == true)
+    trackconfig = addtrackconfig(conn, trackconfig, simdata->track, simdata->trackdistancearound);
+    if (trackconfig == -1)
     {
-        conn_opts.keepAliveInterval = 20;
-        conn_opts.cleansession = 1;
-        if ((rc = MQTTClient_connect(client, &conn_opts)) != MQTTCLIENT_SUCCESS) {
-            MQTTClient_disconnect(client, 10000);
-            sloge("Failed to connect, return code %d", rc);
-            return NULL;
-            //exit(-1);
-        }
-        mqtt_connected = true;
+        slogf("Problem performing insert query. Does the db user have write permissions?");
+        p->err = E_FAILED_DB_CONN;
+        return 0;
     }
+    slogt("Detected track configuration id: %i", trackconfig);
+    int eventid = addevent(conn, trackconfig);
+    int driverid = getdriver(conn, simdata->driver);
+    driverid = adddriver(conn, driverid, simdata->driver);
+    int carid = getcar(conn, simdata->car);
+    carid = addcar(conn, carid, simdata->car);
 
-    int go = false;
-    if (mqtt_connected == true)
-    {
-        go = true;
-    }
+    // ?? close last session
+
+    int pitstatus = simdata->inpit;
+    int sessionstatus = 0;
+    int lastpitstatus = pitstatus;
+    int lastsessionstatus = 0;
+    int lap = 0;
+    int lastlap = 0;
+    int sector = 0;
+    int lastsector = 0;
+
+    int stintid = 0;
+    int stintlapid = 0;
+    int sessionid = 0;
+    sessionid = addsession(conn, eventid, carid, simdata->session, simdata->airtemp, simdata->tracktemp, simdata);
+    stintid = addstint(conn, sessionid, driverid, carid, simdata);
+    stintlapid = addstintlap(conn, stintid, simdata);
+    sessionstatus = simdata->session;
+    lastsessionstatus = sessionstatus;
+    lap = simdata->lap;
+    lastlap = lap;
+    double update_rate = DATA_UPDATE_RATE;
+    struct pollfd mypoll = { STDIN_FILENO, POLLIN|POLLPRI };
+    int go = true;
     char lastsimstatus = false;
-    while (go == true && p->program_state == 1)
+    int tick = 0;
+
+
+    int track_samples = simdata->trackspline / TRACK_SAMPLE_RATE;
+    slogt("track samples %i", track_samples);
+
+    int stintlaps = 1;
+    int validstintlaps = 0;
+    bool validind = true;
+
+    int* speeddata = malloc(track_samples * sizeof(simdata->velocity));
+    int* rpmdata = malloc(track_samples * sizeof(simdata->rpms));
+    int* geardata = malloc(track_samples * sizeof(simdata->gear));
+    double* steerdata = malloc(track_samples * sizeof(simdata->steer));
+    double* acceldata = malloc(track_samples * sizeof(simdata->gas));
+    double* brakedata = malloc(track_samples * sizeof(simdata->brake));
+
+    int sectortimes[4];
+
+    if (p->program_state < 0)
+    {
+        go = false;
+    }
+
+    while (go == true)
     {
 
-        char simstatus = (simdata->simstatus > 0) ? true : false;
-        if (simdata->simstatus > 0 && simstatus != lastsimstatus)
+        slogt("tick %i", tick);
+        int pos = (int) track_samples * simdata->playerspline;
+        slogt("pos %f normpos %i of samples %i", simdata->playerspline, pos, track_samples);
+
+        steerdata[pos] = simdata->steer;
+        acceldata[pos] = simdata->gas;
+        brakedata[pos] = simdata->brake;
+        speeddata[pos] = simdata->velocity;
+        rpmdata[pos] = simdata->rpms;
+        geardata[pos] = simdata->gear;
+
+
+
+
+        sessionstatus = simdata->session;
+        lap = simdata->lap;
+        sector = simdata->sectorindex;
+        if (simdata->lapisvalid == false && validind == true)
         {
-            //update_date();
-            unix_time_start = (unsigned long) time(NULL);
-            sprintf(time_buff, "%lu", unix_time_start);
-            //sprintf(time_buff, "%lu", (unsigned long)time(NULL));
-            //newdatestring = removeSpacesFromStr(datestring);
+            validind = false;
         }
-        lastsimstatus = simstatus;
-        simdatamap(simdata, simmap, 1);
-
-        if (mqtt_connected == true && simdata->simstatus > 0)
+        sectortimes[simdata->sectorindex] = simdata->lastsectorinms;
+        if (sessionstatus != lastsessionstatus)
         {
+            closestint(conn, stintid, stintlaps, validstintlaps);
+            closesession(conn, sessionid);
+            if (sessionstatus > 1)
+            {
+                sessionid = addsession(conn, eventid, carid, simdata->session, simdata->airtemp, simdata->tracktemp, simdata);
+            }
 
-            json_object *root = json_object_new_object();
-            //if (!root)
-            //   return;
+            //pitstatus = 1;
+            stintlaps = 1;
+            validstintlaps = 0;
+        }
+        pitstatus = simdata->inpit;
+        if (simdata->inpit == true && pitstatus != lastpitstatus)
+        {
+            //pitstatus = 1;
+            //}
+            //if (pitstatus = 0 && pitstatus != lastpitstatus)
+            //{
+            // close last stint
 
-            json_object *child = json_object_new_object();
+            closestint(conn, stintid, stintlaps, validstintlaps);
+            stintid = addstint(conn, sessionid, driverid, carid, simdata);
+            stintlaps = 1;
+            validstintlaps = 0;
+        }
+        if (lap != lastlap)
+        {
+            slogt("New lap detected");
+            stintlaps++;
+            if (validind == true)
+            {
+                validstintlaps++;
+            }
 
-            struct timeval tv;
-            gettimeofday(&tv, NULL);
-            unsigned long long millisecondsSinceEpoch = (unsigned long long)(tv.tv_sec) * 1000 + (unsigned long long)(tv.tv_usec) / 1000;
+            closelap(conn, stintlapid, sectortimes[1], sectortimes[2], simdata->lastsectorinms, 0, 0, 0, 0, simdata);
 
-            json_object_object_add(root, "time", json_object_new_int64(millisecondsSinceEpoch)); //unix time milliseconds
-
-            const char* topic_root = "racing/gilles/TuxRacerX";
-            //const char* game_name = "Assetto Corsa (64 bit)";
-            const char* game_name = "assetto_64_bit";
-            const char* session_type = "Practice";
-
-            json_object_object_add(child, "CarModel", json_object_new_string(simdata->car));
-            json_object_object_add(child, "GameName", json_object_new_string(game_name));
-            json_object_object_add(child, "SessionId", json_object_new_int(unix_time_start));
-            json_object_object_add(child, "SessionTypeName", json_object_new_string("Practice"));
-            json_object_object_add(child, "TrackCode", json_object_new_string(simdata->track));
-
-            json_object_object_add(child, "Clutch", json_object_new_double(simdata->clutch));
-            json_object_object_add(child, "Brake", json_object_new_double(simdata->brake));
-            json_object_object_add(child, "Throtte", json_object_new_double(simdata->gas));
-            json_object_object_add(child, "HandBrake", json_object_new_double(simdata->handbrake));
-            json_object_object_add(child, "SteeringAngle", json_object_new_double(simdata->steer));
-            json_object_object_add(child, "Rpms", json_object_new_int(simdata->rpms));
-            json_object_object_add(child, "Gear", json_object_new_int(simdata->gear));
-            json_object_object_add(child, "SpeedMs", json_object_new_double(simdata->velocity * 0.2777778));
-            json_object_object_add(child, "DistanceRoundTrack", json_object_new_double(simdata->trackdistancearound));
-            json_object_object_add(child, "WorldPosition_x", json_object_new_double(simdata->worldposx));
-            json_object_object_add(child, "WorldPosition_y", json_object_new_double(simdata->worldposy));
-            json_object_object_add(child, "WorldPosition_z", json_object_new_double(simdata->worldposz));
-            json_object_object_add(child, "CurrentLap", json_object_new_int(simdata->playerlaps));
-            json_object_object_add(child, "CurrentLapTime", json_object_new_int(simdata->currentlapinseconds));
-            json_object_object_add(child, "LapTimePrevious", json_object_new_int(simdata->lastlapinseconds));
-            json_object_object_add(child, "CurrentLapIsValid", json_object_new_int(simdata->lapisvalid));
-            json_object_object_add(child, "PreviousLapWasValid", json_object_new_int(1));
-
-            json_object_object_add(root, "telemetry", child);
-
-            slogi(json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
-
-            // TODO: generate this topic string only once
-            char* topic = ( char* ) malloc(1 + strlen(topic_root) + strlen("/") + strlen(game_name) + strlen("/") + strlen(session_type)
-                    + strlen("/") + strlen(simdata->car) + strlen("/") + strlen(simdata->track) + strlen("/") + 11);
-            strcpy(topic, topic_root);
-            strcat(topic, "/");
-            strcat(topic, time_buff);
-            strcat(topic, "/");
-            strcat(topic, game_name);
-            strcat(topic, "/");
-            strcat(topic, simdata->track);
-            strcat(topic, "/");
-            strcat(topic, simdata->car);
-            strcat(topic, "/");
-            strcat(topic, session_type);
-
-            char* payload1;
-            sprintf(payload1, json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
-            pubmsg.payload = payload1;
-            //pubmsg.payload = json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
-            //pubmsg.payloadlen = strlen(json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY));
-            pubmsg.payloadlen = strlen(payload1);
-            pubmsg.qos= QOS;
-            pubmsg.retained = 0;
-
-            MQTTClient_publishMessage(client, topic, &pubmsg, &token);
+            stintlapid = addstintlap(conn, stintid, simdata);
+            int telemid = addtelemetry(conn, track_samples, stintlapid);
+            int b = updatetelemetrydata(conn, track_samples, telemid, stintlapid, speeddata, geardata, rpmdata, steerdata, acceldata, brakedata);
+            tick = 0;
+            // assume lap is valid until it isn't
+            validind = true;
         }
 
-    }
-    if (mqtt_connected == true)
-    {
-        MQTTClient_disconnect(client, 10000);
-    }
-    MQTTClient_destroy(&client);
+        lastpitstatus = pitstatus;
+        lastsessionstatus = sessionstatus;
+        lastsector = sector;
+        lastlap = lap;
+        tick++;
 
-    free(simdata);
-    free(simmap);
-    return NULL;
-    //return 0;
+
+        poll(&mypoll, 1, 1000 / DATA_UPDATE_RATE);
+
+        if (p->program_state < 0)
+        {
+            int telemid = addtelemetry(conn, track_samples, stintlapid);
+            int b = updatetelemetrydata(conn, track_samples, telemid, stintlapid, speeddata, geardata, rpmdata, steerdata, acceldata, brakedata);
+            closelap(conn, stintlapid, sectortimes[1], sectortimes[2], simdata->lastsectorinms, 0, 0, 0, 0, simdata);
+            closestint(conn, stintid, stintlaps, validstintlaps);
+            closesession(conn, sessionid);
+            go = false;
+        }
+    }
+
+
+    h_close_db(conn);
+    h_clean_connection(conn);
 }

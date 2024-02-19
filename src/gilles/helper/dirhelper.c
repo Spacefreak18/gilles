@@ -11,7 +11,64 @@
 #include <unistd.h>
 #include <time.h>
 
+
 #include <string.h>
+
+
+
+#include "../slog/slog.h"
+
+
+#define CONFIG_FILE "gilles/gilles.config"
+
+void create_dir(char* dir)
+{
+    struct stat st = {0};
+    if (stat(dir, &st) == -1)
+    {
+        mkdir(dir, 0700);
+    }
+}
+
+char* create_user_dir(char* home_dir_str, const char* dirtype, const char* programname)
+{
+    // +3 for slashes
+    size_t ss = (4 + strlen(home_dir_str) + strlen(dirtype) + strlen(programname));
+    char* config_dir_str = malloc(ss);
+
+    snprintf (config_dir_str, ss, "%s/%s/%s/", home_dir_str, dirtype, programname);
+
+    slogt("creating dir for %s if necessary", config_dir_str);
+    create_dir(config_dir_str);
+    return config_dir_str;
+}
+
+
+char* get_config_file(const char* confpath, xdgHandle* xdg)
+{
+    if ((confpath != NULL) && (strcmp(confpath, "") != 0))
+    {
+        slogw("Using custom config path %s", confpath);
+        return strdup(confpath);
+    }
+
+    const char* relpath = CONFIG_FILE;
+    char* confpath1 = xdgConfigFind(relpath, xdg);
+    slogi("config path is %s", confpath1);
+    return confpath1;
+}
+
+
+char* get_dir_with_default(const char* dirpath, char* defaultpath)
+{
+    if ((dirpath != NULL) && (strcmp(dirpath, "") != 0))
+    {
+        slogw("Using custom config path %s", dirpath);
+        return strdup(dirpath);
+    }
+
+    return defaultpath;
+}
 
 char* gethome()
 {

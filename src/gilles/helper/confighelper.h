@@ -10,13 +10,6 @@
 
 typedef enum
 {
-    SIMULATOR_GILLES_TEST    = 0,
-    SIMULATOR_ASSETTO_CORSA     = 1
-}
-Simulator;
-
-typedef enum
-{
     SIMULATOR_UPDATE_DEFAULT    = 0,
     SIMULATOR_UPDATE_RPMS       = 1,
     SIMULATOR_UPDATE_GEAR       = 2,
@@ -25,21 +18,14 @@ typedef enum
 }
 SimulatorUpdate;
 
-typedef enum
-{
-    GILLES_ERROR_NONE          = 0,
-    GILLES_ERROR_UNKNOWN       = 1,
-    GILLES_ERROR_INVALID_SIM   = 2,
-    GILLES_ERROR_NODATA        = 4,
-}
-GillesError;
-
 typedef struct
 {
     ProgramAction program_action;
     Simulator sim_name;
 }
 GillesSettings;
+
+int loadconfig(const char* config_file_str, Parameters* p);
 
 int strtogame(const char* game, GillesSettings* gs);
 

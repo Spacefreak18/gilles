@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -5,42 +6,22 @@
 #include <unistd.h>
 #include <libconfig.h>
 #include <pthread.h>
+#include <basedir_fs.h>
 
 #include "gameloop/gameloop.h"
+#include "gameloop/browseloop.h"
 #include "helper/parameters.h"
 #include "helper/dirhelper.h"
 #include "helper/confighelper.h"
 #include "slog/slog.h"
 
-
-int create_dir(char* dir)
-{
-    struct stat st = {0};
-    if (stat(dir, &st) == -1)
-    {
-        mkdir(dir, 0700);
-    }
-}
-
-char* create_user_dir(char* dirtype)
-{
-    char* home_dir_str = gethome();
-    char* config_dir_str = ( char* ) malloc(1 + strlen(home_dir_str) + strlen(dirtype) + strlen("gilles/"));
-    strcpy(config_dir_str, home_dir_str);
-    strcat(config_dir_str, dirtype);
-    strcat(config_dir_str, "gilles/");
-
-    create_dir(config_dir_str);
-    free(config_dir_str);
-}
-
+#define PROGRAM_NAME "gilles"
 
 int main(int argc, char** argv)
 {
 
     Parameters* p = malloc(sizeof(Parameters));
     GillesSettings* gs = malloc(sizeof(GillesSettings));;
-
     ConfigError ppe = getParameters(argc, argv, p);
     if (ppe == E_SUCCESS_AND_EXIT)
     {
@@ -50,22 +31,15 @@ int main(int argc, char** argv)
     p->program_state = 1;
 
     char* home_dir_str = gethome();
-    create_user_dir("/.config/");
-    create_user_dir("/.cache/");
-    char* config_file_str = ( char* ) malloc(1 + strlen(home_dir_str) + strlen("/.config/") + strlen("gilles/gilles.config"));
-    char* cache_dir_str = ( char* ) malloc(1 + strlen(home_dir_str) + strlen("/.cache/gilles/"));
-    strcpy(config_file_str, home_dir_str);
-    strcat(config_file_str, "/.config/");
-    strcpy(cache_dir_str, home_dir_str);
-    strcat(cache_dir_str, "/.cache/gilles/");
-    strcat(config_file_str, "gilles/gilles.config");
+
+    char* cachedir = create_user_dir(home_dir_str, ".cache", PROGRAM_NAME);
 
     slog_config_t slgCfg;
     slog_config_get(&slgCfg);
     slgCfg.eColorFormat = SLOG_COLORING_TAG;
     slgCfg.eDateControl = SLOG_TIME_ONLY;
     strcpy(slgCfg.sFileName, "gilles.log");
-    strcpy(slgCfg.sFilePath, cache_dir_str);
+    strcpy(slgCfg.sFilePath, cachedir);
     slgCfg.nTraceTid = 0;
     slgCfg.nToScreen = 1;
     slgCfg.nUseHeap = 0;
@@ -82,42 +56,50 @@ int main(int argc, char** argv)
         slog_disable(SLOG_DEBUG);
     }
 
-    pthread_t ui_thread;
-    pthread_t mqtt_thread;
+    char* configdir = create_user_dir(home_dir_str, ".config", PROGRAM_NAME);
+    char* datadir = create_user_dir(home_dir_str, ".local/share", PROGRAM_NAME);
 
-    if (pthread_create(&ui_thread, NULL, &looper, p) != 0)
+    xdgHandle xdg;
+    if(!xdgInitHandle(&xdg))
     {
-        printf("Uh-oh!\n");
-        return -1;
-    }
-    if (p->mqtt == true)
-    {
-        if (pthread_create(&mqtt_thread, NULL, &b4madmqtt, p) != 0)
-        {
-            printf("Uh-oh!\n");
-            return -1;
-        }
+        slogf("Function xdgInitHandle() failed, is $HOME unset?");
     }
 
-    pthread_join(ui_thread, NULL);
-    p->program_state = -1;
-    if (p->mqtt == true)
-    {
-        pthread_join(mqtt_thread, NULL);
-    }
+    char* config_file_str = get_config_file(p->config_path, &xdg);
+    int err = loadconfig(config_file_str, p);
 
     free(config_file_str);
-    free(cache_dir_str);
+    xdgWipeHandle(&xdg);
 
+    if (err == E_NO_ERROR)
+    {
+        if (p->program_action == A_PLAY)
+        {
+            mainloop(p);
+        }
+        else
+        {
+            browseloop(p, datadir);
+        }
+        if (p->err != E_NO_ERROR)
+        {
+            sloge("Error occured during execution.");
+        }
+    }
 
 
 configcleanup:
     //config_destroy(&cfg);
 
 cleanup_final:
+    freeparams(p);
     free(gs);
     free(p);
+
+    free(configdir);
+    free(datadir);
+    free(cachedir);
+
     exit(0);
 }
-
 
