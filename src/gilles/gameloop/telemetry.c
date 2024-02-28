@@ -183,7 +183,7 @@ int dumptelemetrytofile(struct _h_connection* conn, char* datadir, int lap1id, i
     struct _h_result result1;
     struct _h_data* data1;
     char* query1 = malloc(150 * sizeof(char));
-    sprintf(query1, "SELECT lap_id, points, speed, gear, rpms, brake, accel, steer FROM %s WHERE %s=%i", "telemetry", "lap_id", lap1id);
+    sprintf(query1, "SELECT lap_id, points, speed, rpms, gear, brake, accel, steer FROM %s WHERE %s=%i", "telemetry", "lap_id", lap1id);
     if (h_query_select(conn, query1, &result1) == H_OK)
     {
         //laps->rows = malloc(sizeof(LapRowData) * result.nb_rows);
@@ -201,7 +201,7 @@ int dumptelemetrytofile(struct _h_connection* conn, char* datadir, int lap1id, i
     struct _h_result result2;
     struct _h_data* data2;
     char* query2 = malloc(150 * sizeof(char));
-    sprintf(query2, "SELECT lap_id, points, speed, gear, rpms, brake, accel, steer FROM %s WHERE %s=%i", "telemetry", "lap_id", lap2id);
+    sprintf(query2, "SELECT lap_id, points, speed, rpms, gear, brake, accel, steer FROM %s WHERE %s=%i", "telemetry", "lap_id", lap2id);
     if (h_query_select(conn, query2, &result2) == H_OK)
     {
         //laps->rows = malloc(sizeof(LapRowData) * result.nb_rows);
@@ -227,7 +227,8 @@ int dumptelemetrytofile(struct _h_connection* conn, char* datadir, int lap1id, i
     for (int i=0; i<points; i++)
     {
         fprintf(out, "%i %i %i %i %f %f %f", i+1, intarrays1[i], intarrays1[i+points], intarrays1[i+(points*2)], doublearrays1[i], doublearrays1[i+points], doublearrays1[i+(points*2)]);
-        fprintf(out, "%i %i %i %i %f %f %f\n", i+1, intarrays2[i], intarrays2[i+points], intarrays2[i+(points*2)], doublearrays2[i], doublearrays2[i+points], doublearrays2[i+(points*2)]);
+        // make sure there is an extra space at the beginning of this
+        fprintf(out, " %i %i %i %f %f %f\n", intarrays2[i], intarrays2[i+points], intarrays2[i+(points*2)], doublearrays2[i], doublearrays2[i+points], doublearrays2[i+(points*2)]);
     }
     fclose(out);
 

@@ -950,7 +950,7 @@ void* simviewmysql(void* thargs)
 
             stintlapid = addstintlap(conn, stintid, simdata);
             int telemid = addtelemetry(conn, track_samples, stintlapid);
-            int b = updatetelemetrydata(conn, track_samples, telemid, stintlapid, speeddata, geardata, rpmdata, steerdata, acceldata, brakedata);
+            int b = updatetelemetrydata(conn, track_samples, telemid, stintlapid, speeddata, rpmdata, geardata, steerdata, acceldata, brakedata);
             tick = 0;
             // assume lap is valid until it isn't
             validind = true;
@@ -968,7 +968,7 @@ void* simviewmysql(void* thargs)
         if (p->program_state < 0)
         {
             int telemid = addtelemetry(conn, track_samples, stintlapid);
-            int b = updatetelemetrydata(conn, track_samples, telemid, stintlapid, speeddata, geardata, rpmdata, steerdata, acceldata, brakedata);
+            int b = updatetelemetrydata(conn, track_samples, telemid, stintlapid, speeddata, rpmdata, geardata, steerdata, acceldata, brakedata);
             closelap(conn, stintlapid, sectortimes[1], sectortimes[2], simdata->lastsectorinms, 0, 0, 0, 0, simdata);
             closestint(conn, stintid, stintlaps, validstintlaps);
             closesession(conn, sessionid);
