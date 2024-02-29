@@ -16,6 +16,7 @@ ncurses based telemetry monitor for racing sims
 - [simapi](https://github.com/spacefreak18/simapi)
 
 ## Building
+
 This code depends on the shared memory data headers in the simapi [repo](https://github.com/spacefreak18/simapi). When pulling lastest if the submodule does not download run:
 ```
 git submodule sync --recursive
@@ -29,11 +30,21 @@ make
 ```
 
 ## Usage
+### normal Second Monitor display
 ```
-gilles play --sim=ac -S
+gilles play
+```
+### Run in CLI mode and capture telemetry
+```
+gilles play -cM
+```
+### Browse previous sessions
+```
+gilles browse
 ```
 
-Omit the -S parameter if you do not wish to send data to your local mqtt server.
+## Compatibility
+So far this is only tested with Assetto Corsa. For best results, it requires the CrewChief plugin. And for telemetry, the CrewChief plugin is a must.
 
 ## Testing
 
