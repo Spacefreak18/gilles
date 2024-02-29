@@ -888,9 +888,8 @@ void* simviewmysql(void* thargs)
     while (go == true)
     {
 
-        slogt("tick %i", tick);
         int pos = (int) track_samples * simdata->playerspline;
-        slogt("pos %f normpos %i of samples %i", simdata->playerspline, pos, track_samples);
+        slogt("tick %i pos %f normpos %i of samples %i", tick, simdata->playerspline, pos, track_samples);
 
         steerdata[pos] = simdata->steer;
         acceldata[pos] = simdata->gas;
@@ -899,8 +898,8 @@ void* simviewmysql(void* thargs)
         rpmdata[pos] = simdata->rpms;
         geardata[pos] = simdata->gear;
 
-
-
+        slogt("speed %i rpms %i gear %i steer %f gas %f brake %f", speeddata[pos], rpmdata[pos], geardata[pos], steerdata[pos],
+                acceldata[pos], brakedata[pos]);
 
         sessionstatus = simdata->session;
         lap = simdata->lap;
