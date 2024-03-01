@@ -871,12 +871,12 @@ void* simviewmysql(void* thargs)
     int validstintlaps = 0;
     bool validind = true;
 
-    int* speeddata = malloc(track_samples * sizeof(simdata->velocity));
-    int* rpmdata = malloc(track_samples * sizeof(simdata->rpms));
-    int* geardata = malloc(track_samples * sizeof(simdata->gear));
-    double* steerdata = malloc(track_samples * sizeof(simdata->steer));
-    double* acceldata = malloc(track_samples * sizeof(simdata->gas));
-    double* brakedata = malloc(track_samples * sizeof(simdata->brake));
+    int* speeddata = calloc(track_samples, sizeof(simdata->velocity));
+    int* rpmdata = calloc(track_samples, sizeof(simdata->rpms));
+    int* geardata = calloc(track_samples, sizeof(simdata->gear));
+    double* steerdata = calloc(track_samples, sizeof(simdata->steer));
+    double* acceldata = calloc(track_samples, sizeof(simdata->gas));
+    double* brakedata = calloc(track_samples, sizeof(simdata->brake));
 
     int sectortimes[4];
 
@@ -953,6 +953,12 @@ void* simviewmysql(void* thargs)
             tick = 0;
             // assume lap is valid until it isn't
             validind = true;
+            speeddata = calloc(track_samples, sizeof(simdata->velocity));
+            rpmdata = calloc(track_samples, sizeof(simdata->rpms));
+            geardata = calloc(track_samples, sizeof(simdata->gear));
+            steerdata = calloc(track_samples, sizeof(simdata->steer));
+            acceldata = calloc(track_samples, sizeof(simdata->gas));
+            brakedata = calloc(track_samples, sizeof(simdata->brake));
         }
 
         lastpitstatus = pitstatus;
