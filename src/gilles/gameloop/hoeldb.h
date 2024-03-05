@@ -155,7 +155,7 @@ int adddriver(struct _h_connection* conn, int driverid, const char* drivername);
 
 int addevent(struct _h_connection* conn, int track_config);
 
-int addsession(struct _h_connection* conn, int eventid, int carid, int eventtype, int airtemp, int tracktemp, SimData* simdata);
+int addsession(struct _h_connection* conn, int eventid, int carid, int sessiontype, int airtemp, int tracktemp, SimData* simdata);
 
 int addstint(struct _h_connection* conn, int sessionid, int driverid, int carid, SimData* simdata);
 

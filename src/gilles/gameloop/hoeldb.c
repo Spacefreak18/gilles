@@ -329,7 +329,7 @@ int addtrackconfig(struct _h_connection* conn, int trackconfigid, const char* tr
     return trackconfigid;
 }
 
-int addsession(struct _h_connection* conn, int eventid, int carid, int eventtype, int airtemp, int tracktemp, SimData* simdata)
+int addsession(struct _h_connection* conn, int eventid, int carid, int sessiontype, int airtemp, int tracktemp, SimData* simdata)
 {
 
 // session_id | event_id | event_type | track_time | session_name
@@ -344,7 +344,7 @@ int addsession(struct _h_connection* conn, int eventid, int carid, int eventtype
     json_t* values = json_object();
     json_object_set_new(values, "event_id", json_integer(eventid));
     json_object_set_new(values, "car_id", json_integer(carid));
-    json_object_set_new(values, "event_type", json_integer(1));
+    json_object_set_new(values, "session_type", json_integer(sessiontype));
     json_object_set_new(values, "duration_min", json_integer(60));
     json_object_set_new(values, "start_time", json_string("NOW()"));
     json_object_set_new(values, "session_name", json_string("default"));

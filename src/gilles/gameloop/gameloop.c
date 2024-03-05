@@ -885,6 +885,7 @@ void* simviewmysql(void* thargs)
         go = false;
     }
 
+    int lastpos = 0;
     while (go == true)
     {
 
@@ -897,6 +898,21 @@ void* simviewmysql(void* thargs)
         speeddata[pos] = simdata->velocity;
         rpmdata[pos] = simdata->rpms;
         geardata[pos] = simdata->gear;
+
+        if(lastpos < pos-1)
+        {
+            while(lastpos < pos)
+            {
+                steerdata[lastpos] = simdata->steer;
+                acceldata[lastpos] = simdata->gas;
+                brakedata[lastpos] = simdata->brake;
+                speeddata[lastpos] = simdata->velocity;
+                rpmdata[lastpos] = simdata->rpms;
+                geardata[lastpos] = simdata->gear;
+                lastpos++;
+            }
+        }
+        lastpos = pos;
 
         slogt("speed %i rpms %i gear %i steer %f gas %f brake %f", speeddata[pos], rpmdata[pos], geardata[pos], steerdata[pos],
                 acceldata[pos], brakedata[pos]);
