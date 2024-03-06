@@ -29,6 +29,25 @@ cmake ..
 make
 ```
 
+## DB Setup
+```
+CREATE DATABASE gilles;
+```
+```
+psql -d gilles -f data/gilles-psql.sql
+```
+for postgres 15+
+```
+GRANT pg_read_all_data TO USER;  
+GRANT pg_write_all_data TO USER;
+```
+for postgres 15 and below
+```
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO USER;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO USER;
+GRANT ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA pbulic TO USER;
+```
+
 ## Usage
 ### normal Second Monitor display
 ```
