@@ -68,10 +68,10 @@ int telem_result(struct _h_result result, int doublefields, int intfields, int* 
                             sss[8] = *((char*)((struct _h_type_blob*)result.data[row][col].t_data)->value+offset2+8);
                             sss[9] = *((char*)((struct _h_type_blob*)result.data[row][col].t_data)->value+offset2+9);
                             long val;
-                            int number = (int)strtol(sss, NULL, 16);
-                            int swapped = __bswap_32(number);
+                            uint32_t number = (uint32_t)strtol(sss, NULL, 16);
+                            uint32_t swapped = (uint32_t)__bswap_32(number);
 
-                            intarrays[j+intarrayoffset] = __bswap_32(number);
+                            intarrays[j+intarrayoffset] = (uint32_t)__bswap_32(number);
                             offset2 = offset2 + 8;
                             i+=8;
                             j++;
@@ -175,9 +175,9 @@ int dumptelemetrytofile(struct _h_connection* conn, char* datadir, int lap1id, i
     free(query);
 
 
-    int* intarrays1 = malloc((sizeof(int))*points*intfields);
+    uint32_t* intarrays1 = malloc((sizeof(uint32_t))*points*intfields);
     double* doublearrays1 = malloc((sizeof(double))*points*doublefields);
-    int* intarrays2 = malloc((sizeof(int))*points*intfields);
+    uint32_t* intarrays2 = malloc((sizeof(uint32_t))*points*intfields);
     double* doublearrays2 = malloc((sizeof(double))*points*doublefields);
 
     struct _h_result result1;
@@ -224,11 +224,31 @@ int dumptelemetrytofile(struct _h_connection* conn, char* datadir, int lap1id, i
     slogt("dumping %i points to file %s", points, datafile);
     FILE* out = fopen(datafile, "w");
     fprintf(out, "%s %s %s %s %s %s %s %s %s %s %s %s %s\n", "point", "speed1", "rpms1", "gear1", "brake1", "accel1", "steer1", "speed2", "rpms2", "gear2", "brake2", "accel2", "steer2" );
+
+    // this could be made configurable at some point, but i think the graphs are too noisey with the shifts into neutral for each shift
+    bool hideneutral = true;
+    int lastgear1 = 0;
+    int lastgear2 = 0;
     for (int i=0; i<points; i++)
     {
-        fprintf(out, "%i %i %i %i %f %f %f", i+1, intarrays1[i], intarrays1[i+points], intarrays1[i+(points*2)], doublearrays1[i], doublearrays1[i+points], doublearrays1[i+(points*2)]);
+        int gear1 = intarrays1[i+(points*2)];
+        int gear2 = intarrays2[i+(points*2)];
+        if (hideneutral == true)
+        {
+            if( gear1 == 1)
+            {
+                gear1 = lastgear1;
+            }
+            if( gear2 == 1)
+            }
+                gear2 = lastgear2;
+            }
+        }
+        fprintf(out, "%i %i %i %i %f %f %f", i+1, intarrays1[i], intarrays1[i+points], gear1, doublearrays1[i], doublearrays1[i+points], doublearrays1[i+(points*2)]);
         // make sure there is an extra space at the beginning of this
-        fprintf(out, " %i %i %i %f %f %f\n", intarrays2[i], intarrays2[i+points], intarrays2[i+(points*2)], doublearrays2[i], doublearrays2[i+points], doublearrays2[i+(points*2)]);
+        fprintf(out, " %i %i %i %f %f %f\n", intarrays2[i], intarrays2[i+points], gear2, doublearrays2[i], doublearrays2[i+points], doublearrays2[i+(points*2)]);
+        lastgear1 = gear1;
+        lastgear2 = gear2;
     }
     fclose(out);
 

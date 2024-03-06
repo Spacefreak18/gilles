@@ -92,14 +92,14 @@ typedef struct LapRowData
     int max_speed;
     int avg_speed;
     PDBTimeStamp finished_at;
-    //double f_tyre_temp;
-    //double r_tyre_temp;
-    //double f_tyre_wear;
-    //double r_tyre_wear;
-    //double f_tyre_press;
-    //double r_tyre_press;
-    //double f_brake_temp;
-    //double r_brake_temp;
+    double f_tyre_temp;
+    double r_tyre_temp;
+    double f_tyre_wear;
+    double r_tyre_wear;
+    double f_tyre_press;
+    double r_tyre_press;
+    double f_brake_temp;
+    double r_brake_temp;
 }
 LapRowData;
 
@@ -128,7 +128,7 @@ typedef struct LapDbo
     int numrows;
     bool hasdata;
 
-    DBField fields[13];
+    DBField fields[21];
     LapRowData* rows;
 }
 LapDbo;

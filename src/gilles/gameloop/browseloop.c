@@ -260,30 +260,30 @@ void* browseloop(Parameters* p, char* datadir)
     DBField avgspeed;
     avgspeed.type = HOEL_COL_TYPE_INT;
     avgspeed.offset = offsetof(LapRowData, avg_speed);
-    //DBField f_tyre_temp;
-    //f_tyre_temp.type = HOEL_COL_TYPE_DOUBLE;
-    //f_tyre_temp.offset = offsetof(LapRowData, f_tyre_temp);
-    //DBField r_tyre_temp;
-    //r_tyre_temp.type = HOEL_COL_TYPE_DOUBLE;
-    //r_tyre_temp.offset = offsetof(LapRowData, r_tyre_temp);
-    //DBField f_tyre_wear;
-    //f_tyre_wear.type = HOEL_COL_TYPE_DOUBLE;
-    //f_tyre_wear.offset = offsetof(LapRowData, f_tyre_wear);
-    //DBField r_tyre_wear;
-    //r_tyre_wear.type = HOEL_COL_TYPE_DOUBLE;
-    //r_tyre_wear.offset = offsetof(LapRowData, r_tyre_wear);
-    //DBField f_tyre_press;
-    //f_tyre_press.type = HOEL_COL_TYPE_DOUBLE;
-    //f_tyre_press.offset = offsetof(LapRowData, f_tyre_press);
-    //DBField r_tyre_press;
-    //r_tyre_press.type = HOEL_COL_TYPE_DOUBLE;
-    //r_tyre_press.offset = offsetof(LapRowData, r_tyre_press);
-    //DBField f_brake_temp;
-    //f_brake_temp.type = HOEL_COL_TYPE_DOUBLE;
-    //f_brake_temp.offset = offsetof(LapRowData, f_brake_temp);
-    //DBField r_brake_temp;
-    //r_brake_temp.type = HOEL_COL_TYPE_DOUBLE;
-    //r_brake_temp.offset = offsetof(LapRowData, r_brake_temp);
+    DBField f_tyre_temp;
+    f_tyre_temp.type = HOEL_COL_TYPE_DOUBLE;
+    f_tyre_temp.offset = offsetof(LapRowData, f_tyre_temp);
+    DBField r_tyre_temp;
+    r_tyre_temp.type = HOEL_COL_TYPE_DOUBLE;
+    r_tyre_temp.offset = offsetof(LapRowData, r_tyre_temp);
+    DBField f_tyre_wear;
+    f_tyre_wear.type = HOEL_COL_TYPE_DOUBLE;
+    f_tyre_wear.offset = offsetof(LapRowData, f_tyre_wear);
+    DBField r_tyre_wear;
+    r_tyre_wear.type = HOEL_COL_TYPE_DOUBLE;
+    r_tyre_wear.offset = offsetof(LapRowData, r_tyre_wear);
+    DBField f_tyre_press;
+    f_tyre_press.type = HOEL_COL_TYPE_DOUBLE;
+    f_tyre_press.offset = offsetof(LapRowData, f_tyre_press);
+    DBField r_tyre_press;
+    r_tyre_press.type = HOEL_COL_TYPE_DOUBLE;
+    r_tyre_press.offset = offsetof(LapRowData, r_tyre_press);
+    DBField f_brake_temp;
+    f_brake_temp.type = HOEL_COL_TYPE_DOUBLE;
+    f_brake_temp.offset = offsetof(LapRowData, f_brake_temp);
+    DBField r_brake_temp;
+    r_brake_temp.type = HOEL_COL_TYPE_DOUBLE;
+    r_brake_temp.offset = offsetof(LapRowData, r_brake_temp);
     DBField lapsdbfinishedat;
     lapsdbfinishedat.type = HOEL_COL_TYPE_DATE;
     lapsdbfinishedat.offset = offsetof(LapRowData, finished_at);
@@ -325,6 +325,10 @@ void* browseloop(Parameters* p, char* datadir)
     wrefresh(bwin1);
     int stint_useid = 0;
     int lap_useid = 0;
+
+    char laptimechar1[10];
+    char laptimechar2[10];
+
     while (go == true)
     {
 
@@ -521,12 +525,15 @@ void* browseloop(Parameters* p, char* datadir)
                             if ( lapsdb.rows[i-1].lap_id == selection1 )
                             {
                                 mvwaddnstr(bwin1, 4+i, bwiny/7 - 4, " 1 ", 3);
+                                LapTime l = hoel_convert_to_simdata_laptime( lapsdb.rows[i-1].time);
+                                snprintf(laptimechar1, 10, "%d:%02d:%02d", l.minutes, l.seconds, l.fraction);
                             }
                             else
                                 if ( lapsdb.rows[i-1].lap_id == selection2 )
                                 {
-
                                     mvwaddnstr(bwin1, 4+i, bwiny/7 - 4, " 2 ", 3);
+                                    LapTime l = hoel_convert_to_simdata_laptime( lapsdb.rows[i-1].time);
+                                    snprintf(laptimechar2, 10, "%d:%02d:%02d", l.minutes, l.seconds, l.fraction);
                                 }
                             if ( i == selection )
                             {
@@ -621,8 +628,10 @@ void* browseloop(Parameters* p, char* datadir)
                     size_t strsize = strlen(datadir) + strlen(p->gnuplot_file) + 1;
                     char* plotfile = malloc(strsize);
                     snprintf(plotfile, strsize, "%s%s", datadir, p->gnuplot_file);
-                    static char* argv1[]= {"gnuplot", "-p", "plotfile.gp", NULL};
-                    argv1[2] = plotfile;
+                    static char* argv1[]= {"gnuplot", "-p", "-c", "plotfile.gp", "hold", "hold", NULL};
+                    argv1[3] = plotfile;
+                    argv1[4] = laptimechar1;
+                    argv1[5] = laptimechar2;
                     slogi("Using gnu plot file %s", plotfile);
                     if(!fork())
                     {
