@@ -240,7 +240,7 @@ int dumptelemetrytofile(struct _h_connection* conn, char* datadir, int lap1id, i
                 gear1 = lastgear1;
             }
             if( gear2 == 1)
-            }
+            {
                 gear2 = lastgear2;
             }
         }
