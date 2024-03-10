@@ -526,14 +526,14 @@ void* browseloop(Parameters* p, char* datadir)
                             {
                                 mvwaddnstr(bwin1, 4+i, bwiny/7 - 4, " 1 ", 3);
                                 LapTime l = hoel_convert_to_simdata_laptime( lapsdb.rows[i-1].time);
-                                snprintf(laptimechar1, 10, "%d:%02d:%02d", l.minutes, l.seconds, l.fraction);
+                                snprintf(laptimechar1, 10, "%d:%02d:%03d", l.minutes, l.seconds, l.fraction);
                             }
                             else
                                 if ( lapsdb.rows[i-1].lap_id == selection2 )
                                 {
                                     mvwaddnstr(bwin1, 4+i, bwiny/7 - 4, " 2 ", 3);
                                     LapTime l = hoel_convert_to_simdata_laptime( lapsdb.rows[i-1].time);
-                                    snprintf(laptimechar2, 10, "%d:%02d:%02d", l.minutes, l.seconds, l.fraction);
+                                    snprintf(laptimechar2, 10, "%d:%02d:%03d", l.minutes, l.seconds, l.fraction);
                                 }
                             if ( i == selection )
                             {
@@ -551,7 +551,7 @@ void* browseloop(Parameters* p, char* datadir)
                             snprintf(maxspeedchar, 4, "%i", lapsdb.rows[i-1].max_speed);
                             LapTime l = hoel_convert_to_simdata_laptime( lapsdb.rows[i-1].time);
                             char laptimechar[10];
-                            snprintf(laptimechar, 10, "%d:%02d:%02d", l.minutes, l.seconds, l.fraction);
+                            snprintf(laptimechar, 10, "%d:%02d:%03d", l.minutes, l.seconds, l.fraction);
 
                             mvwaddnstr(bwin1, 4+i, bwiny/width2+2, idchar, -1);
                             mvwaddnstr(bwin1, 4+i, bwiny/width2+bwiny/width1, "my session name", -1);
