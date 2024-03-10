@@ -963,9 +963,11 @@ void* simviewmysql(void* thargs)
 
             closelap(conn, stintlapid, sectortimes[1], sectortimes[2], simdata->lastsectorinms, 0, 0, 0, 0, simdata);
 
-            stintlapid = addstintlap(conn, stintid, simdata);
             int telemid = addtelemetry(conn, track_samples, stintlapid);
             int b = updatetelemetrydata(conn, track_samples, telemid, stintlapid, speeddata, rpmdata, geardata, steerdata, acceldata, brakedata);
+
+            stintlapid = addstintlap(conn, stintid, simdata);
+
             tick = 0;
             // assume lap is valid until it isn't
             validind = true;
