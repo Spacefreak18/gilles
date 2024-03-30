@@ -814,6 +814,7 @@ void* simviewmysql(void* thargs)
     }
     slogi("Starting telemetry");
 
+    slogt("Getting track config");
     int trackconfig = gettrack(conn, simdata->track);
     if (trackconfig == -1)
     {
@@ -822,6 +823,7 @@ void* simviewmysql(void* thargs)
         return 0;
     }
 
+    slogt("Adding track if necessary");
     trackconfig = addtrackconfig(conn, trackconfig, simdata->track, simdata->trackdistancearound);
     if (trackconfig == -1)
     {
@@ -871,6 +873,9 @@ void* simviewmysql(void* thargs)
     int validstintlaps = 0;
     bool validind = true;
 
+    double maxspeed = 0;
+    double avgspeed = 0;
+
     int* speeddata = calloc(track_samples, sizeof(simdata->velocity));
     int* rpmdata = calloc(track_samples, sizeof(simdata->rpms));
     int* geardata = calloc(track_samples, sizeof(simdata->gear));
@@ -913,6 +918,12 @@ void* simviewmysql(void* thargs)
             }
         }
         lastpos = pos;
+
+        if ( speeddata[pos] > maxspeed )
+        {
+            maxspeed = speeddata[pos];
+        }
+        avgspeed += speeddata[pos] / track_samples;
 
         slogt("speed %i rpms %i gear %i steer %f gas %f brake %f", speeddata[pos], rpmdata[pos], geardata[pos], steerdata[pos],
                 acceldata[pos], brakedata[pos]);
@@ -961,13 +972,15 @@ void* simviewmysql(void* thargs)
                 validstintlaps++;
             }
 
-            closelap(conn, stintlapid, sectortimes[1], sectortimes[2], simdata->lastsectorinms, 0, 0, 0, 0, simdata);
+            closelap(conn, stintlapid, sectortimes[1], sectortimes[2], simdata->lastsectorinms, 0, 0, maxspeed, avgspeed, simdata);
 
             int telemid = addtelemetry(conn, track_samples, stintlapid);
             int b = updatetelemetrydata(conn, track_samples, telemid, stintlapid, speeddata, rpmdata, geardata, steerdata, acceldata, brakedata);
 
             stintlapid = addstintlap(conn, stintid, simdata);
 
+            maxspeed = 0;
+            avgspeed = 0;
             tick = 0;
             // assume lap is valid until it isn't
             validind = true;

@@ -255,10 +255,10 @@ void* browseloop(Parameters* p, char* datadir)
     carcrashes.type = HOEL_COL_TYPE_INT;
     carcrashes.offset = offsetof(LapRowData, crashes);
     DBField maxspeed;
-    maxspeed.type = HOEL_COL_TYPE_INT;
+    maxspeed.type = HOEL_COL_TYPE_DOUBLE;
     maxspeed.offset = offsetof(LapRowData, max_speed);
     DBField avgspeed;
-    avgspeed.type = HOEL_COL_TYPE_INT;
+    avgspeed.type = HOEL_COL_TYPE_DOUBLE;
     avgspeed.offset = offsetof(LapRowData, avg_speed);
     DBField f_tyre_temp;
     f_tyre_temp.type = HOEL_COL_TYPE_DOUBLE;
@@ -548,7 +548,7 @@ void* browseloop(Parameters* p, char* datadir)
                             char idchar[4];
                             snprintf(idchar, 4, "%i", lapsdb.rows[i-1].lap_id);
                             char maxspeedchar[4];
-                            snprintf(maxspeedchar, 4, "%i", lapsdb.rows[i-1].max_speed);
+                            snprintf(maxspeedchar, 4, "%f", lapsdb.rows[i-1].max_speed);
                             LapTime l = hoel_convert_to_simdata_laptime( lapsdb.rows[i-1].time);
                             char laptimechar[10];
                             snprintf(laptimechar, 10, "%d:%02d:%03d", l.minutes, l.seconds, l.fraction);

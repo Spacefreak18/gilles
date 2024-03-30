@@ -580,8 +580,7 @@ int addtelemetry(struct _h_connection* conn, int points, int stintid)
     return getLastInsertID(conn);
 }
 
-
-int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, int sector3, int cuts, int crashes, int maxspeed, int avgspeed, SimData* simdata)
+int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, int sector3, int cuts, int crashes, double maxspeed, double avgspeed, SimData* simdata)
 {
 
 // stint laps
@@ -593,7 +592,7 @@ int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, in
     int laptime = (simdata->lastlap.minutes * 60000) + (simdata->lastlap.seconds * 1000) + simdata->lastlap.fraction;
 
     char* query = malloc((sizeof(char)*650));
-    sprintf(query, "UPDATE %s SET %s=%i, %s=%i, %s=%i, %s=%i, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, finished_at=NOW() WHERE lap_id=%i;",
+    sprintf(query, "UPDATE %s SET %s=%i, %s=%i, %s=%i, %s=%i, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, %s=%f, finished_at=NOW() WHERE lap_id=%i;",
             "laps", "time", laptime, "sector_1", sector1, "sector_2", sector2, "sector_3", sector3,
             "right_front_tyre_temp", simdata->tyretemp[1],
             "right_rear_tyre_temp",  simdata->tyretemp[3],
@@ -611,6 +610,8 @@ int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, in
             "left_rear_tyre_press", simdata->tyrepressure[2],
             "left_front_brake_temp",simdata->braketemp[0],
             "left_rear_brake_temp", simdata->braketemp[2],
+            "max_speed", maxspeed,
+            "avg_speed", avgspeed,
             lapid);
 
     int errcode = h_query_update(conn, query);

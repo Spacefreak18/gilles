@@ -89,8 +89,8 @@ typedef struct LapRowData
     int time;
     int cuts;
     int crashes;
-    int max_speed;
-    int avg_speed;
+    double max_speed;
+    double avg_speed;
     PDBTimeStamp finished_at;
     double f_tyre_temp;
     double r_tyre_temp;
@@ -165,7 +165,7 @@ int addcar(struct _h_connection* conn, int carid, const char* carname);
 
 int addtelemetry(struct _h_connection* conn, int points, int stintid);
 
-int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, int sector3, int cuts, int crashes, int maxspeed, int avgspeed, SimData* simdata);
+int closelap(struct _h_connection* conn, int lapid, int sector1, int sector2, int sector3, int cuts, int crashes, double maxspeed, double avgspeed, SimData* simdata);
 
 int closestint(struct _h_connection* conn, int stintid, int stintlaps, int validstintlaps);
 
