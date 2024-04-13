@@ -233,6 +233,12 @@ int dumptelemetrytofile(struct _h_connection* conn, char* datadir, int lap1id, i
     {
         int gear1 = intarrays1[i+(points*2)];
         int gear2 = intarrays2[i+(points*2)];
+        double steer1 = doublearrays1[i+(points*2)];
+        double steer2 = doublearrays2[i+(points*2)];
+        if (steer1 == 0.00 || steer2 == 0.00)
+        {
+            continue;
+        }
         if (hideneutral == true)
         {
             if( gear1 == 1)
