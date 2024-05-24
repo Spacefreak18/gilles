@@ -153,7 +153,8 @@ int mainloop(Parameters* p)
     double update_rate = SIM_CHECK_RATE;
     int go = true;
     char lastsimstatus = false;
-    while (go == true)
+    p->err = E_NO_ERROR;
+    while (go == true && p->err == E_NO_ERROR)
     {
 
         getSim(simdata, simmap, &p->simon, &p->sim);
@@ -187,11 +188,16 @@ int mainloop(Parameters* p)
             //}
             if (p->mysql == true)
             {
+                slogt("starting telemetry thread");
                 if (pthread_create(&mysql_thread, NULL, &simviewmysql, p) != 0)
                 {
                     printf("Uh-oh!\n");
                     return -1;
                 }
+            }
+            slogt("running loop");
+            if (p->err > 0) {
+                go = false;
             }
 
             pthread_join(ui_thread, NULL);
@@ -257,7 +263,7 @@ void* clilooper(void* thargs)
     double update_rate = DEFAULT_UPDATE_RATE;
     int go = true;
     char lastsimstatus = false;
-    while (go == true && simdata->simstatus > 1)
+    while (go == true && simdata->simstatus > 1 && p->err == E_NO_ERROR)
     {
         simdatamap(simdata, simmap, p->sim);
 
@@ -298,7 +304,7 @@ void* looper(void* thargs)
 
     int go = true;
     char lastsimstatus = false;
-    while (go == true && simdata->simstatus > 1)
+    while (go == true && simdata->simstatus > 1 && p->err == E_NO_ERROR)
     {
         simdatamap(simdata, simmap, p->sim);
 
@@ -804,6 +810,8 @@ void* simviewmysql(void* thargs)
 
     struct _h_result result;
     struct _h_connection* conn;
+
+    slogt("Attempting postgresql database connection");
     conn = h_connect_pgsql(p->db_conn);
 
     if (conn == NULL)
@@ -891,7 +899,7 @@ void* simviewmysql(void* thargs)
     }
 
     int lastpos = 0;
-    while (go == true)
+    while (go == true && p->err == E_NO_ERROR)
     {
 
         int pos = (int) track_samples * simdata->playerspline;
@@ -1015,4 +1023,6 @@ void* simviewmysql(void* thargs)
 
     h_close_db(conn);
     h_clean_connection(conn);
+
+    return 0;
 }
