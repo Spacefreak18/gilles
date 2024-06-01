@@ -20,14 +20,30 @@ int freeparams(Parameters* p)
         {
             free(p->db_user);
         }
+        if(p->db_pass != NULL)
+        {
+            free(p->db_pass);
+        }
+        if(p->db_serv != NULL)
+        {
+            free(p->db_serv);
+        }
+        if(p->db_dbnm != NULL)
+        {
+            free(p->db_dbnm);
+        }
         if(p->db_conn != NULL)
         {
             free(p->db_conn);
         }
-    }
-    if (p->program_action == A_BROWSE)
-    {
-        free(p->gnuplot_bin);
+        if(p->gnuplot_file != NULL)
+        {
+            free(p->gnuplot_file);
+        }
+        if(p->gnuplot_bin != NULL)
+        {
+            free(p->gnuplot_bin);
+        }
     }
     if (p->config_path != NULL)
     {
@@ -48,6 +64,16 @@ ConfigError getParameters(int argc, char** argv, Parameters* p)
     p->mysql               = false;
     p->simon               = false;
     p->verbosity_count     = 0;
+
+    p->config_path         = NULL;
+    p->sim_string          = NULL;
+    p->db_user             = NULL;
+    p->db_pass             = NULL;
+    p->db_serv             = NULL;
+    p->db_dbnm             = NULL;
+    p->db_conn             = NULL;
+    p->gnuplot_file        = NULL;
+    p->gnuplot_bin         = NULL;
 
     // setup argument handling structures
     const char* progname = "Gilles";
